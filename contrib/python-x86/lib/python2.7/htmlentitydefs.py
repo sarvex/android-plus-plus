@@ -1,5 +1,6 @@
 """HTML character entity references."""
 
+
 # maps the HTML entity name to the Unicode codepoint
 name2codepoint = {
     'AElig':    0x00c6, # latin capital letter AE = latin capital ligature AE, U+00C6 ISOlat1
@@ -265,9 +266,5 @@ entitydefs = {}
 
 for (name, codepoint) in name2codepoint.iteritems():
     codepoint2name[codepoint] = name
-    if codepoint <= 0xff:
-        entitydefs[name] = chr(codepoint)
-    else:
-        entitydefs[name] = '&#%d;' % codepoint
-
+    entitydefs[name] = chr(codepoint) if codepoint <= 0xff else '&#%d;' % codepoint
 del name, codepoint

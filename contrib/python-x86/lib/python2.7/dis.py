@@ -161,18 +161,17 @@ def findlabels(code):
     while i < n:
         c = code[i]
         op = ord(c)
-        i = i+1
+        i += 1
         if op >= HAVE_ARGUMENT:
             oparg = ord(code[i]) + ord(code[i+1])*256
-            i = i+2
+            i += 2
             label = -1
             if op in hasjrel:
                 label = i+oparg
             elif op in hasjabs:
                 label = oparg
-            if label >= 0:
-                if label not in labels:
-                    labels.append(label)
+            if label >= 0 and label not in labels:
+                labels.append(label)
     return labels
 
 def findlinestarts(code):
@@ -181,7 +180,7 @@ def findlinestarts(code):
     Generate pairs (offset, lineno) as described in Python/compile.c.
 
     """
-    byte_increments = [ord(c) for c in code.co_lnotab[0::2]]
+    byte_increments = [ord(c) for c in code.co_lnotab[::2]]
     line_increments = [ord(c) for c in code.co_lnotab[1::2]]
 
     lastlineno = None
@@ -208,10 +207,7 @@ def _test():
             fn = None
     else:
         fn = None
-    if fn is None:
-        f = sys.stdin
-    else:
-        f = open(fn)
+    f = sys.stdin if fn is None else open(fn)
     source = f.read()
     if fn is not None:
         f.close()

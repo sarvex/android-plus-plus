@@ -149,7 +149,6 @@ class IMAP4:
     mustquote = re.compile(r"[^\w!#$%&'*+,.:;<=>?^`|~-]")
 
     def __init__(self, host = '', port = IMAP4_PORT):
-        self.debug = Debug
         self.state = 'LOGOUT'
         self.literal = None             # A literal argument to a command
         self.tagged_commands = {}       # Tagged commands awaiting response
@@ -158,6 +157,7 @@ class IMAP4:
         self.is_readonly = False        # READ-ONLY desired state
         self.tagnum = 0
 
+        self.debug = Debug
         # Open socket to server.
 
         self.open(host, port)
@@ -166,9 +166,9 @@ class IMAP4:
         # and compile tagged response matcher.
 
         self.tagpre = Int2AP(random.randint(4096, 65535))
-        self.tagre = re.compile(r'(?P<tag>'
-                        + self.tagpre
-                        + r'\d+) (?P<type>[A-Z]+) (?P<data>.*)')
+        self.tagre = re.compile(
+            f'(?P<tag>{self.tagpre}' + r'\d+) (?P<type>[A-Z]+) (?P<data>.*)'
+        )
 
         # Get server welcome message,
         # request and store CAPABILITY response.
@@ -178,8 +178,8 @@ class IMAP4:
             self._cmd_log_idx = 0
             self._cmd_log = {}           # Last `_cmd_log_len' interactions
             if self.debug >= 1:
-                self._mesg('imaplib version %s' % __version__)
-                self._mesg('new IMAP4 connection, tag=%s' % self.tagpre)
+                self._mesg(f'imaplib version {__version__}')
+                self._mesg(f'new IMAP4 connection, tag={self.tagpre}')
 
         self.welcome = self._get_response()
         if 'PREAUTH' in self.untagged_responses:
@@ -194,12 +194,11 @@ class IMAP4:
             raise self.error('no CAPABILITY response from server')
         self.capabilities = tuple(dat[-1].upper().split())
 
-        if __debug__:
-            if self.debug >= 3:
-                self._mesg('CAPABILITIES: %r' % (self.capabilities,))
+        if __debug__ and self.debug >= 3:
+            self._mesg('CAPABILITIES: %r' % (self.capabilities,))
 
         for version in AllowedVersions:
-            if not version in self.capabilities:
+            if version not in self.capabilities:
                 continue
             self.PROTOCOL_VERSION = version
             return
@@ -211,7 +210,7 @@ class IMAP4:
         #       Allow UPPERCASE variants of IMAP4 command methods.
         if attr in Commands:
             return getattr(self, attr.lower())
-        raise AttributeError("Unknown IMAP4 command: '%s'" % attr)
+        raise AttributeError(f"Unknown IMAP4 command: '{attr}'")
 
 
 
@@ -313,13 +312,10 @@ class IMAP4:
             mailbox = 'INBOX'
         if flags:
             if (flags[0],flags[-1]) != ('(',')'):
-                flags = '(%s)' % flags
+                flags = f'({flags})'
         else:
             flags = None
-        if date_time:
-            date_time = Time2Internaldate(date_time)
-        else:
-            date_time = None
+        date_time = Time2Internaldate(date_time) if date_time else None
         self.literal = MapCRLF.sub(CRLF, message)
         return self._simple_command(name, mailbox, flags, date_time)
 
@@ -521,7 +517,7 @@ class IMAP4:
     def _CRAM_MD5_AUTH(self, challenge):
         """ Authobject to use with CRAM-MD5 authentication. """
         import hmac
-        return self.user + " " + hmac.HMAC(self.password, challenge).hexdigest()
+        return f"{self.user} {hmac.HMAC(self.password, challenge).hexdigest()}"
 
 
     def logout(self):
@@ -574,9 +570,8 @@ class IMAP4:
 
         (typ, [data]) = <instance>.noop()
         """
-        if __debug__:
-            if self.debug >= 3:
-                self._dump_ur(self.untagged_responses)
+        if __debug__ and self.debug >= 3:
+            self._dump_ur(self.untagged_responses)
         return self._simple_command('NOOP')
 
 
@@ -642,21 +637,17 @@ class IMAP4:
         """
         self.untagged_responses = {}    # Flush old responses.
         self.is_readonly = readonly
-        if readonly:
-            name = 'EXAMINE'
-        else:
-            name = 'SELECT'
+        name = 'EXAMINE' if readonly else 'SELECT'
         typ, dat = self._simple_command(name, mailbox)
         if typ != 'OK':
             self.state = 'AUTH'     # Might have been 'SELECTED'
             return typ, dat
         self.state = 'SELECTED'
         if 'READ-ONLY' in self.untagged_responses \
-                and not readonly:
-            if __debug__:
-                if self.debug >= 1:
-                    self._dump_ur(self.untagged_responses)
-            raise self.readonly('%s is not writable' % mailbox)
+                    and not readonly:
+            if __debug__ and self.debug >= 1:
+                self._dump_ur(self.untagged_responses)
+            raise self.readonly(f'{mailbox} is not writable')
         return typ, self.untagged_responses.get('EXISTS', [None])
 
 
@@ -694,7 +685,7 @@ class IMAP4:
         #if not name in self.capabilities:      # Let the server decide!
         #       raise self.error('unimplemented extension command: %s' % name)
         if (sort_criteria[0],sort_criteria[-1]) != ('(',')'):
-            sort_criteria = '(%s)' % sort_criteria
+            sort_criteria = f'({sort_criteria})'
         typ, dat = self._simple_command(name, sort_criteria, charset, *search_criteria)
         return self._untagged_response(typ, dat, name)
 
@@ -717,7 +708,7 @@ class IMAP4:
         (typ, [data]) = <instance>.store(message_set, command, flags)
         """
         if (flags[0],flags[-1]) != ('(',')'):
-            flags = '(%s)' % flags  # Avoid quoting the flags
+            flags = f'({flags})'
         typ, dat = self._simple_command('STORE', message_set, command, flags)
         return self._untagged_response(typ, dat, 'FETCH')
 
@@ -749,8 +740,8 @@ class IMAP4:
         Returns response appropriate to 'command'.
         """
         command = command.upper()
-        if not command in Commands:
-            raise self.error("Unknown IMAP4 UID command: %s" % command)
+        if command not in Commands:
+            raise self.error(f"Unknown IMAP4 UID command: {command}")
         if self.state not in Commands[command]:
             raise self.error("command %s illegal in state %s, "
                              "only allowed in states %s" %
@@ -758,10 +749,7 @@ class IMAP4:
                               ', '.join(Commands[command])))
         name = 'UID'
         typ, dat = self._simple_command(name, command, *args)
-        if command in ('SEARCH', 'SORT', 'THREAD'):
-            name = command
-        else:
-            name = 'FETCH'
+        name = command if command in ('SEARCH', 'SORT', 'THREAD') else 'FETCH'
         return self._untagged_response(typ, dat, name)
 
 
@@ -786,7 +774,7 @@ class IMAP4:
         name = name.upper()
         #if not name in self.capabilities:      # Let the server decide!
         #    raise self.error('unknown extension command: %s' % name)
-        if not name in Commands:
+        if name not in Commands:
             Commands[name] = (self.state,)
         return self._simple_command(name, *args)
 
@@ -799,10 +787,10 @@ class IMAP4:
 
         if dat is None: dat = ''
         ur = self.untagged_responses
-        if __debug__:
-            if self.debug >= 5:
-                self._mesg('untagged_responses[%s] %s += ["%s"]' %
-                        (typ, len(ur.get(typ,'')), dat))
+        if __debug__ and self.debug >= 5:
+            self._mesg(
+                f"""untagged_responses[{typ}] {len(ur.get(typ, ''))} += ["{dat}"]"""
+            )
         if typ in ur:
             ur[typ].append(dat)
         else:
@@ -810,8 +798,7 @@ class IMAP4:
 
 
     def _check_bye(self):
-        bye = self.untagged_responses.get('BYE')
-        if bye:
+        if bye := self.untagged_responses.get('BYE'):
             raise self.abort(bye[-1])
 
 
@@ -919,8 +906,8 @@ class IMAP4:
 
         if self._match(self.tagre, resp):
             tag = self.mo.group('tag')
-            if not tag in self.tagged_commands:
-                raise self.abort('unexpected tagged response: %s' % resp)
+            if tag not in self.tagged_commands:
+                raise self.abort(f'unexpected tagged response: {resp}')
 
             typ = self.mo.group('type')
             dat = self.mo.group('data')
@@ -930,9 +917,10 @@ class IMAP4:
 
             # '*' (untagged) responses?
 
-            if not self._match(Untagged_response, resp):
-                if self._match(Untagged_status, resp):
-                    dat2 = self.mo.group('data2')
+            if not self._match(Untagged_response, resp) and self._match(
+                Untagged_status, resp
+            ):
+                dat2 = self.mo.group('data2')
 
             if self.mo is None:
                 # Only other possibility is '+' (continuation) response...
@@ -941,12 +929,13 @@ class IMAP4:
                     self.continuation_response = self.mo.group('data')
                     return None     # NB: indicates continuation
 
-                raise self.abort("unexpected response: '%s'" % resp)
+                raise self.abort(f"unexpected response: '{resp}'")
 
             typ = self.mo.group('type')
             dat = self.mo.group('data')
             if dat is None: dat = ''        # Null untagged response
-            if dat2: dat = dat + ' ' + dat2
+            if dat2:
+                dat = f'{dat} {dat2}'
 
             # Is there a literal to come?
 
@@ -955,9 +944,8 @@ class IMAP4:
                 # Read literal direct from connection.
 
                 size = int(self.mo.group('size'))
-                if __debug__:
-                    if self.debug >= 4:
-                        self._mesg('read literal size %s' % size)
+                if __debug__ and self.debug >= 4:
+                    self._mesg(f'read literal size {size}')
                 data = self.read(size)
 
                 # Store response with literal as tuple
@@ -975,9 +963,8 @@ class IMAP4:
         if typ in ('OK', 'NO', 'BAD') and self._match(Response_code, dat):
             self._append_untagged(self.mo.group('type'), self.mo.group('data'))
 
-        if __debug__:
-            if self.debug >= 1 and typ in ('NO', 'BAD', 'BYE'):
-                self._mesg('%s response: %s' % (typ, dat))
+        if __debug__ and self.debug >= 1 and typ in ('NO', 'BAD', 'BYE'):
+            self._mesg(f'{typ} response: {dat}')
 
         return resp
 
@@ -1017,9 +1004,9 @@ class IMAP4:
         line = line[:-2]
         if __debug__:
             if self.debug >= 4:
-                self._mesg('< %s' % line)
+                self._mesg(f'< {line}')
             else:
-                self._log('< %s' % line)
+                self._log(f'< {line}')
         return line
 
 
@@ -1029,15 +1016,14 @@ class IMAP4:
         # Save result, return success.
 
         self.mo = cre.match(s)
-        if __debug__:
-            if self.mo is not None and self.debug >= 5:
-                self._mesg("\tmatched r'%s' => %r" % (cre.pattern, self.mo.groups()))
+        if __debug__ and self.mo is not None and self.debug >= 5:
+            self._mesg("\tmatched r'%s' => %r" % (cre.pattern, self.mo.groups()))
         return self.mo is not None
 
 
     def _new_tag(self):
 
-        tag = '%s%s' % (self.tagpre, self.tagnum)
+        tag = f'{self.tagpre}{self.tagnum}'
         self.tagnum = self.tagnum + 1
         self.tagged_commands[tag] = None
         return tag
@@ -1052,9 +1038,7 @@ class IMAP4:
             return arg
         if len(arg) >= 2 and (arg[0],arg[-1]) in (('(',')'),('"','"')):
             return arg
-        if arg and self.mustquote.search(arg) is None:
-            return arg
-        return self._quote(arg)
+        return arg if arg and self.mustquote.search(arg) is None else self._quote(arg)
 
 
     def _quote(self, arg):
@@ -1062,7 +1046,7 @@ class IMAP4:
         arg = arg.replace('\\', '\\\\')
         arg = arg.replace('"', '\\"')
 
-        return '"%s"' % arg
+        return f'"{arg}"'
 
 
     def _simple_command(self, name, *args):
@@ -1074,12 +1058,11 @@ class IMAP4:
 
         if typ == 'NO':
             return typ, dat
-        if not name in self.untagged_responses:
+        if name not in self.untagged_responses:
             return typ, [None]
         data = self.untagged_responses.pop(name)
-        if __debug__:
-            if self.debug >= 5:
-                self._mesg('untagged_responses[%s] => %s' % (name, data))
+        if __debug__ and self.debug >= 5:
+            self._mesg(f'untagged_responses[{name}] => {data}')
         return typ, data
 
 
@@ -1097,8 +1080,8 @@ class IMAP4:
             l = dict.items()
             if not l: return
             t = '\n\t\t'
-            l = map(lambda x:'%s: "%s"' % (x[0], x[1][0] and '" "'.join(x[1]) or ''), l)
-            self._mesg('untagged responses dump:%s%s' % (t, t.join(l)))
+            l = map(lambda x: f"""{x[0]}: "{x[1][0] and '" "'.join(x[1]) or ''}\"""", l)
+            self._mesg(f'untagged responses dump:{t}{t.join(l)}')
 
         def _log(self, line):
             # Keep log of last `_cmd_log_len' interactions for debugging.
@@ -1179,7 +1162,7 @@ else:
                 if sent == bytes:
                     break    # avoid copy
                 data = data[sent:]
-                bytes = bytes - sent
+                bytes -= sent
 
 
         def shutdown(self):
@@ -1274,9 +1257,7 @@ class _Authenticator:
 
     def process(self, data):
         ret = self.mech(self.decode(data))
-        if ret is None:
-            return '*'      # Abort conversation
-        return self.encode(ret)
+        return '*' if ret is None else self.encode(ret)
 
     def encode(self, inp):
         #
@@ -1295,15 +1276,12 @@ class _Authenticator:
             else:
                 t = inp
                 inp = ''
-            e = binascii.b2a_base64(t)
-            if e:
+            if e := binascii.b2a_base64(t):
                 oup = oup + e[:-1]
         return oup
 
     def decode(self, inp):
-        if not inp:
-            return ''
-        return binascii.a2b_base64(inp)
+        return '' if not inp else binascii.a2b_base64(inp)
 
 
 
@@ -1373,10 +1351,7 @@ def ParseFlags(resp):
     """Convert IMAP4 flags response to python tuple."""
 
     mo = Flags.match(resp)
-    if not mo:
-        return ()
-
-    return tuple(mo.group('flags').split())
+    return () if not mo else tuple(mo.group('flags').split())
 
 
 def Time2Internaldate(date_time):
@@ -1402,12 +1377,9 @@ def Time2Internaldate(date_time):
 
     dt = time.strftime("%d-%b-%Y %H:%M:%S", tt)
     if dt[0] == '0':
-        dt = ' ' + dt[1:]
-    if time.daylight and tt[-1]:
-        zone = -time.altzone
-    else:
-        zone = -time.timezone
-    return '"' + dt + " %+03d%02d" % divmod(zone//60, 60) + '"'
+        dt = f' {dt[1:]}'
+    zone = -time.altzone if time.daylight and tt[-1] else -time.timezone
+    return f'"{dt}' + " %+03d%02d" % divmod(zone//60, 60) + '"'
 
 
 
@@ -1468,9 +1440,9 @@ if __name__ == '__main__':
     )
 
     def run(cmd, args):
-        M._mesg('%s %s' % (cmd, args))
+        M._mesg(f'{cmd} {args}')
         typ, dat = getattr(M, cmd)(*args)
-        M._mesg('%s => %s %s' % (cmd, typ, dat))
+        M._mesg(f'{cmd} => {typ} {dat}')
         if typ == 'NO': raise dat[0]
         return dat
 

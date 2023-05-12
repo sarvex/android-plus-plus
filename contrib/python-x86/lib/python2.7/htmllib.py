@@ -63,11 +63,10 @@ class HTMLParser(sgmllib.SGMLParser):
     def handle_data(self, data):
         if self.savedata is not None:
             self.savedata = self.savedata + data
+        elif self.nofill:
+            self.formatter.add_literal_data(data)
         else:
-            if self.nofill:
-                self.formatter.add_literal_data(data)
-            else:
-                self.formatter.add_flowing_data(data)
+            self.formatter.add_flowing_data(data)
 
     # --- Hooks to save data; shouldn't need to be overridden
 
@@ -294,7 +293,8 @@ class HTMLParser(sgmllib.SGMLParser):
         label = '1.'
         for a, v in attrs:
             if a == 'type':
-                if len(v) == 1: v = v + '.'
+                if len(v) == 1:
+                    v = f'{v}.'
                 label = v
         self.list_stack.append(['ol', label, 0])
 
@@ -333,10 +333,9 @@ class HTMLParser(sgmllib.SGMLParser):
 
     def ddpop(self, bl=0):
         self.formatter.end_paragraph(bl)
-        if self.list_stack:
-            if self.list_stack[-1][0] == 'dd':
-                del self.list_stack[-1]
-                self.formatter.pop_margin()
+        if self.list_stack and self.list_stack[-1][0] == 'dd':
+            del self.list_stack[-1]
+            self.formatter.pop_margin()
 
     # --- Phrase Markup
 
@@ -388,7 +387,7 @@ class HTMLParser(sgmllib.SGMLParser):
             value = value.strip()
             if attrname == 'href':
                 href = value
-            if attrname == 'name':
+            elif attrname == 'name':
                 name = value
             if attrname == 'type':
                 type = value.lower()
@@ -419,17 +418,17 @@ class HTMLParser(sgmllib.SGMLParser):
         for attrname, value in attrs:
             if attrname == 'align':
                 align = value
-            if attrname == 'alt':
+            elif attrname == 'alt':
                 alt = value
-            if attrname == 'ismap':
-                ismap = value
-            if attrname == 'src':
-                src = value
-            if attrname == 'width':
-                try: width = int(value)
-                except ValueError: pass
-            if attrname == 'height':
+            elif attrname == 'height':
                 try: height = int(value)
+                except ValueError: pass
+            elif attrname == 'ismap':
+                ismap = value
+            elif attrname == 'src':
+                src = value
+            elif attrname == 'width':
+                try: width = int(value)
                 except ValueError: pass
         self.handle_image(src, alt, ismap, align, width, height)
 

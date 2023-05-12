@@ -41,15 +41,13 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Serve a GET request."""
-        f = self.send_head()
-        if f:
+        if f := self.send_head():
             self.copyfile(f, self.wfile)
             f.close()
 
     def do_HEAD(self):
         """Serve a HEAD request."""
-        f = self.send_head()
-        if f:
+        if f := self.send_head():
             f.close()
 
     def send_head(self):
@@ -69,7 +67,7 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not self.path.endswith('/'):
                 # redirect browser - doing basically what apache does
                 self.send_response(301)
-                self.send_header("Location", self.path + "/")
+                self.send_header("Location", f"{self.path}/")
                 self.end_headers()
                 return None
             for index in "index.html", "index.htm":
@@ -121,11 +119,11 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             displayname = linkname = name
             # Append / for directories or @ for symbolic links
             if os.path.isdir(fullname):
-                displayname = name + "/"
-                linkname = name + "/"
+                displayname = f"{name}/"
+                linkname = f"{name}/"
             if os.path.islink(fullname):
-                displayname = name + "@"
-                # Note: a link to a directory displays with @ and links with /
+                displayname = f"{name}@"
+                        # Note: a link to a directory displays with @ and links with /
             f.write('<li><a href="%s">%s</a>\n'
                     % (urllib.quote(linkname), cgi.escape(displayname)))
         f.write("</ul>\n<hr>\n</body>\n</html>\n")
@@ -133,7 +131,7 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         f.seek(0)
         self.send_response(200)
         encoding = sys.getfilesystemencoding()
-        self.send_header("Content-type", "text/html; charset=%s" % encoding)
+        self.send_header("Content-type", f"text/html; charset={encoding}")
         self.send_header("Content-Length", str(length))
         self.end_headers()
         return f

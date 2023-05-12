@@ -76,10 +76,7 @@ def getopt(args, shortopts, longopts = []):
     """
 
     opts = []
-    if type(longopts) == type(""):
-        longopts = [longopts]
-    else:
-        longopts = list(longopts)
+    longopts = [longopts] if type(longopts) == type("") else list(longopts)
     while args and args[0].startswith('-') and args[0] != '-':
         if args[0] == '--':
             args = args[1:]
@@ -108,11 +105,7 @@ def gnu_getopt(args, shortopts, longopts = []):
 
     opts = []
     prog_args = []
-    if isinstance(longopts, str):
-        longopts = [longopts]
-    else:
-        longopts = list(longopts)
-
+    longopts = [longopts] if isinstance(longopts, str) else list(longopts)
     # Allow options after non-option arguments?
     if shortopts.startswith('+'):
         shortopts = shortopts[1:]
@@ -131,13 +124,12 @@ def gnu_getopt(args, shortopts, longopts = []):
             opts, args = do_longs(opts, args[0][2:], longopts, args[1:])
         elif args[0][:1] == '-' and args[0] != '-':
             opts, args = do_shorts(opts, args[0][1:], shortopts, args[1:])
+        elif all_options_first:
+            prog_args += args
+            break
         else:
-            if all_options_first:
-                prog_args += args
-                break
-            else:
-                prog_args.append(args[0])
-                args = args[1:]
+            prog_args.append(args[0])
+            args = args[1:]
 
     return opts, prog_args
 
@@ -153,11 +145,11 @@ def do_longs(opts, opt, longopts, args):
     if has_arg:
         if optarg is None:
             if not args:
-                raise GetoptError('option --%s requires argument' % opt, opt)
+                raise GetoptError(f'option --{opt} requires argument', opt)
             optarg, args = args[0], args[1:]
     elif optarg is not None:
-        raise GetoptError('option --%s must not have an argument' % opt, opt)
-    opts.append(('--' + opt, optarg or ''))
+        raise GetoptError(f'option --{opt} must not have an argument', opt)
+    opts.append((f'--{opt}', optarg or ''))
     return opts, args
 
 # Return:
@@ -166,17 +158,17 @@ def do_longs(opts, opt, longopts, args):
 def long_has_args(opt, longopts):
     possibilities = [o for o in longopts if o.startswith(opt)]
     if not possibilities:
-        raise GetoptError('option --%s not recognized' % opt, opt)
+        raise GetoptError(f'option --{opt} not recognized', opt)
     # Is there an exact match?
     if opt in possibilities:
         return False, opt
-    elif opt + '=' in possibilities:
+    elif f'{opt}=' in possibilities:
         return True, opt
     # No exact match, so better be unique.
     if len(possibilities) > 1:
         # XXX since possibilities contains all valid continuations, might be
         # nice to work them into the error msg
-        raise GetoptError('option --%s not a unique prefix' % opt, opt)
+        raise GetoptError(f'option --{opt} not a unique prefix', opt)
     assert len(possibilities) == 1
     unique_match = possibilities[0]
     has_arg = unique_match.endswith('=')
@@ -190,20 +182,19 @@ def do_shorts(opts, optstring, shortopts, args):
         if short_has_arg(opt, shortopts):
             if optstring == '':
                 if not args:
-                    raise GetoptError('option -%s requires argument' % opt,
-                                      opt)
+                    raise GetoptError(f'option -{opt} requires argument', opt)
                 optstring, args = args[0], args[1:]
             optarg, optstring = optstring, ''
         else:
             optarg = ''
-        opts.append(('-' + opt, optarg))
+        opts.append((f'-{opt}', optarg))
     return opts, args
 
 def short_has_arg(opt, shortopts):
     for i in range(len(shortopts)):
         if opt == shortopts[i] != ':':
             return shortopts.startswith(':', i+1)
-    raise GetoptError('option -%s not recognized' % opt, opt)
+    raise GetoptError(f'option -{opt} not recognized', opt)
 
 if __name__ == '__main__':
     import sys

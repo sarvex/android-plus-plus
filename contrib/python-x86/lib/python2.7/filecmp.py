@@ -111,14 +111,8 @@ class dircmp:
     def __init__(self, a, b, ignore=None, hide=None): # Initialize
         self.left = a
         self.right = b
-        if hide is None:
-            self.hide = [os.curdir, os.pardir] # Names never to be shown
-        else:
-            self.hide = hide
-        if ignore is None:
-            self.ignore = ['RCS', 'CVS', 'tags'] # Names ignored in comparison
-        else:
-            self.ignore = ignore
+        self.hide = [os.curdir, os.pardir] if hide is None else hide
+        self.ignore = ['RCS', 'CVS', 'tags'] if ignore is None else ignore
 
     def phase0(self): # Compare everything except common subdirectories
         self.left_list = _filter(os.listdir(self.left),

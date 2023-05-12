@@ -74,26 +74,26 @@ def __get_builtin_constructor(name):
         elif name in ('SHA256', 'sha256', 'SHA224', 'sha224'):
             import _sha256
             bs = name[3:]
-            if bs == '256':
-                return _sha256.sha256
-            elif bs == '224':
+            if bs == '224':
                 return _sha256.sha224
+            elif bs == '256':
+                return _sha256.sha256
         elif name in ('SHA512', 'sha512', 'SHA384', 'sha384'):
             import _sha512
             bs = name[3:]
-            if bs == '512':
-                return _sha512.sha512
-            elif bs == '384':
+            if bs == '384':
                 return _sha512.sha384
+            elif bs == '512':
+                return _sha512.sha512
     except ImportError:
         pass  # no extension module, this hash is unsupported.
 
-    raise ValueError('unsupported hash type ' + name)
+    raise ValueError(f'unsupported hash type {name}')
 
 
 def __get_openssl_constructor(name):
     try:
-        f = getattr(_hashlib, 'openssl_' + name)
+        f = getattr(_hashlib, f'openssl_{name}')
         # Allow the C module to raise ValueError.  The function will be
         # defined but the hash not actually available thanks to OpenSSL.
         f()

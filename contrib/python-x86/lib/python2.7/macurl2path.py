@@ -30,11 +30,11 @@ def url2pathname(pathname):
         elif components[i] == '..' and i > 0 and \
                                   components[i-1] not in ('', '..'):
             del components[i-1:i+1]
-            i = i-1
+            i -= 1
         elif components[i] == '' and i > 0 and components[i-1] != '':
             del components[i]
         else:
-            i = i+1
+            i += 1
     if not components[0]:
         # Absolute unix path, don't start with colon
         rv = ':'.join(components[1:])
@@ -44,7 +44,7 @@ def url2pathname(pathname):
         i = 0
         while i < len(components) and components[i] == '..':
             components[i] = ''
-            i = i + 1
+            i += 1
         rv = ':' + ':'.join(components)
     # and finally unquote slashes and other funny characters
     return urllib.unquote(rv)

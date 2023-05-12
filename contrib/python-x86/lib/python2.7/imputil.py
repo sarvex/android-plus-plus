@@ -88,13 +88,8 @@ class ImportManager:
 
         parts = fqname.split('.')
 
-        # determine the context of this import
-        parent = self._determine_import_context(globals)
-
-        # if there is a parent, then its importer should manage this import
-        if parent:
-            module = parent.__importer__._do_import(parent, parts, fromlist)
-            if module:
+        if parent := self._determine_import_context(globals):
+            if module := parent.__importer__._do_import(parent, parts, fromlist):
                 return module
 
         # has the top module already been imported?
@@ -106,7 +101,7 @@ class ImportManager:
             top_module = self._import_top_module(parts[0])
             if not top_module:
                 # the topmost module wasn't found at all.
-                raise ImportError, 'No module named ' + fqname
+                raise (ImportError, f'No module named {fqname}')
 
         # fast-path simple imports
         if len(parts) == 1:
@@ -130,21 +125,16 @@ class ImportManager:
                 # exists.
                 return top_module
 
-        importer = top_module.__dict__.get('__importer__')
-        if importer:
+        if importer := top_module.__dict__.get('__importer__'):
             return importer._finish_import(top_module, parts[1:], fromlist)
 
         # Grrr, some people "import os.path" or do "from os.path import ..."
         if len(parts) == 2 and hasattr(top_module, parts[1]):
-            if fromlist:
-                return getattr(top_module, parts[1])
-            else:
-                return top_module
-
+            return getattr(top_module, parts[1]) if fromlist else top_module
         # If the importer does not exist, then we have to bail. A missing
         # importer means that something else imported the module, and we have
         # no knowledge of how to get sub-modules out of the thing.
-        raise ImportError, 'No module named ' + fqname
+        raise (ImportError, f'No module named {fqname}')
 
     def _determine_import_context(self, globals):
         """Returns the context in which a module should be imported.
@@ -203,10 +193,6 @@ class ImportManager:
         # reloading of a module may or may not be possible (depending on the
         # importer), but at least we can validate that it's ours to reload
         importer = module.__dict__.get('__importer__')
-        if not importer:
-            ### oops. now what...
-            pass
-
         # okay. it is using the imputil system, and we must delegate it, but
         # we don't know what to do (yet)
         ### we should blast the module dict and do another get_code(). need to
@@ -324,10 +310,10 @@ class Importer:
         Returns the last module in the dotted list of modules.
         """
         for part in parts:
-            fqname = "%s.%s" % (m.__name__, part)
+            fqname = f"{m.__name__}.{part}"
             m = self._import_one(m, part, fqname)
             if not m:
-                raise ImportError, "No module named " + fqname
+                raise (ImportError, f"No module named {fqname}")
         return m
 
     def _import_fromlist(self, package, fromlist):
@@ -337,16 +323,16 @@ class Importer:
         # variable to find additional items (modules) to import.
         if '*' in fromlist:
             fromlist = list(fromlist) + \
-                       list(package.__dict__.get('__all__', []))
+                           list(package.__dict__.get('__all__', []))
 
         for sub in fromlist:
             # if the name is already present, then don't try to import it (it
             # might not be a module!).
             if sub != '*' and not hasattr(package, sub):
-                subname = "%s.%s" % (package.__name__, sub)
+                subname = f"{package.__name__}.{sub}"
                 submod = self._import_one(package, sub, subname)
                 if not submod:
-                    raise ImportError, "cannot import name " + subname
+                    raise (ImportError, f"cannot import name {subname}")
 
     def _do_import(self, parent, parts, fromlist):
         """Attempt to import the module relative to parent.
@@ -355,13 +341,12 @@ class Importer:
         imported the parent module.
         """
         top_name = parts[0]
-        top_fqname = parent.__name__ + '.' + top_name
-        top_module = self._import_one(parent, top_name, top_fqname)
-        if not top_module:
+        top_fqname = f'{parent.__name__}.{top_name}'
+        if top_module := self._import_one(parent, top_name, top_fqname):
+            return self._finish_import(top_module, parts[1:], fromlist)
+        else:
             # this importer and parent could not find the module (relatively)
             return None
-
-        return self._finish_import(top_module, parts[1:], fromlist)
 
     ######################################################################
     #
@@ -407,10 +392,10 @@ class Importer:
 #
 
 # byte-compiled file suffix character
-_suffix_char = __debug__ and 'c' or 'o'
+_suffix_char = 'c' if __debug__ else 'o'
 
 # byte-compiled file suffix
-_suffix = '.py' + _suffix_char
+_suffix = f'.py{_suffix_char}'
 
 def _compile(pathname, timestamp):
     """Compile (and cache) a Python source file.
@@ -470,9 +455,7 @@ def _os_bootstrap():
             if a == '':
                 return b
             lastchar = a[-1:]
-            if lastchar == '/' or lastchar == sep:
-                return a + b
-            return a + sep + b
+            return a + b if lastchar in ['/', sep] else a + sep + b
 
     global _os_stat
     _os_stat = stat
@@ -534,8 +517,7 @@ class _FilesystemImporter(Importer):
         self.suffixes.append((suffix, importFunc))
 
     def import_from_dir(self, dir, fqname):
-        result = self._import_pathname(_os_path_join(dir, fqname), fqname)
-        if result:
+        if result := self._import_pathname(_os_path_join(dir, fqname), fqname):
             return self._process_result(result, fqname)
         return None
 
@@ -555,9 +537,9 @@ class _FilesystemImporter(Importer):
 
     def _import_pathname(self, pathname, fqname):
         if _os_path_isdir(pathname):
-            result = self._import_pathname(_os_path_join(pathname, '__init__'),
-                                           fqname)
-            if result:
+            if result := self._import_pathname(
+                _os_path_join(pathname, '__init__'), fqname
+            ):
                 values = result[2]
                 values['__pkgdir__'] = pathname
                 values['__path__'] = [ pathname ]
@@ -586,12 +568,11 @@ def py_suffix_importer(filename, finfo, fqname):
 
     code = None
     if t_pyc is not None and t_pyc >= t_py:
-        f = open(file, 'rb')
-        if f.read(4) == imp.get_magic():
-            t = struct.unpack('<I', f.read(4))[0]
-            if t == t_py:
-                code = marshal.load(f)
-        f.close()
+        with open(file, 'rb') as f:
+            if f.read(4) == imp.get_magic():
+                t = struct.unpack('<I', f.read(4))[0]
+                if t == t_py:
+                    code = marshal.load(f)
     if code is None:
         file = filename
         code = _compile(file, t_py)

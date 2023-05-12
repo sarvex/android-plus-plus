@@ -12,10 +12,7 @@ __all__ = ["getline", "clearcache", "checkcache"]
 
 def getline(filename, lineno, module_globals=None):
     lines = getlines(filename, module_globals)
-    if 1 <= lineno <= len(lines):
-        return lines[lineno-1]
-    else:
-        return ''
+    return lines[lineno-1] if 1 <= lineno <= len(lines) else ''
 
 
 # The cache
@@ -46,11 +43,10 @@ def checkcache(filename=None):
 
     if filename is None:
         filenames = cache.keys()
+    elif filename in cache:
+        filenames = [filename]
     else:
-        if filename in cache:
-            filenames = [filename]
-        else:
-            return
+        return
 
     for filename in filenames:
         size, mtime, lines, fullname = cache[filename]

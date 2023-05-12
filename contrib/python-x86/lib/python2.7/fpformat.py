@@ -43,8 +43,7 @@ def extract(s):
     sign, intpart, fraction, exppart = res.group(1,2,3,4)
     if sign == '+': sign = ''
     if fraction: fraction = fraction[1:]
-    if exppart: expo = int(exppart[1:])
-    else: expo = 0
+    expo = int(exppart[1:]) if exppart else 0
     return sign, intpart, fraction, expo
 
 def unexpo(intpart, fraction, expo):
@@ -77,7 +76,7 @@ def roundfrac(intpart, fraction, digs):
             if total[n] != '9': break
             n = n-1
         else:
-            total = '0' + total
+            total = f'0{total}'
             i = i+1
             n = 0
         total = total[:n] + chr(ord(total[n]) + 1) + '0'*(len(total)-n-1)
@@ -100,8 +99,7 @@ def fix(x, digs):
     intpart, fraction = roundfrac(intpart, fraction, digs)
     while intpart and intpart[0] == '0': intpart = intpart[1:]
     if intpart == '': intpart = '0'
-    if digs > 0: return sign + intpart + '.' + fraction
-    else: return sign + intpart
+    return sign + intpart + '.' + fraction if digs > 0 else sign + intpart
 
 def sci(x, digs):
     """Format x as [-]d.dddE[+-]ddd with 'digs' digits after the point
@@ -128,12 +126,12 @@ def sci(x, digs):
             intpart[0], intpart[1:] + fraction[:-1], \
             expo + len(intpart) - 1
     s = sign + intpart
-    if digs > 0: s = s + '.' + fraction
+    if digs > 0:
+        s = f'{s}.{fraction}'
     e = repr(abs(expo))
     e = '0'*(3-len(e)) + e
-    if expo < 0: e = '-' + e
-    else: e = '+' + e
-    return s + 'e' + e
+    e = f'-{e}' if expo < 0 else f'+{e}'
+    return f'{s}e{e}'
 
 def test():
     """Interactive test run."""

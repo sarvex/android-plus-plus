@@ -39,17 +39,16 @@ def _find_executable(executable, path=None):
     base, ext = os.path.splitext(executable)
 
     if (sys.platform == 'win32' or os.name == 'os2') and (ext != '.exe'):
-        executable = executable + '.exe'
+        executable = f'{executable}.exe'
 
-    if not os.path.isfile(executable):
-        for p in paths:
-            f = os.path.join(p, executable)
-            if os.path.isfile(f):
-                # the file exists, we have a shot at spawn working
-                return f
-        return None
-    else:
+    if os.path.isfile(executable):
         return executable
+    for p in paths:
+        f = os.path.join(p, executable)
+        if os.path.isfile(f):
+            # the file exists, we have a shot at spawn working
+            return f
+    return None
 
 
 def _read_output(commandstring):
@@ -63,20 +62,20 @@ def _read_output(commandstring):
         import tempfile
         fp = tempfile.NamedTemporaryFile()
     except ImportError:
-        fp = open("/tmp/_osx_support.%s"%(
-            os.getpid(),), "w+b")
+        fp = open(f"/tmp/_osx_support.{os.getpid()}", "w+b")
 
     with contextlib.closing(fp) as fp:
-        cmd = "%s 2>/dev/null >'%s'" % (commandstring, fp.name)
+        cmd = f"{commandstring} 2>/dev/null >'{fp.name}'"
         return fp.read().decode('utf-8').strip() if not os.system(cmd) else None
 
 
 def _find_build_tool(toolname):
     """Find a build tool on current path or using xcrun"""
-    return (_find_executable(toolname)
-                or _read_output("/usr/bin/xcrun -find %s" % (toolname,))
-                or ''
-            )
+    return (
+        _find_executable(toolname)
+        or _read_output(f"/usr/bin/xcrun -find {toolname}")
+        or ''
+    )
 
 _SYSTEM_VERSION = None
 
@@ -105,8 +104,8 @@ def _get_system_version():
             finally:
                 f.close()
             if m is not None:
-                _SYSTEM_VERSION = '.'.join(m.group(1).split('.')[:2])
-            # else: fall back to the default behaviour
+                _SYSTEM_VERSION = '.'.join(m[1].split('.')[:2])
+                    # else: fall back to the default behaviour
 
     return _SYSTEM_VERSION
 
@@ -138,7 +137,7 @@ def _supports_universal_builds():
             osx_version = tuple(int(i) for i in osx_version.split('.'))
         except ValueError:
             osx_version = ''
-    return bool(osx_version >= (10, 4)) if osx_version else False
+    return osx_version >= (10, 4) if osx_version else False
 
 
 def _find_appropriate_compiler(_config_vars):
@@ -197,7 +196,7 @@ def _find_appropriate_compiler(_config_vars):
         for cv in _COMPILER_CONFIG_VARS:
             if cv in _config_vars and cv not in os.environ:
                 cv_split = _config_vars[cv].split()
-                cv_split[0] = cc if cv != 'CXX' else cc + '++'
+                cv_split[0] = cc if cv != 'CXX' else f'{cc}++'
                 _save_modified_value(_config_vars, cv, ' '.join(cv_split))
 
     return _config_vars
@@ -262,7 +261,7 @@ def _override_all_archs(_config_vars):
             if cv in _config_vars and '-arch' in _config_vars[cv]:
                 flags = _config_vars[cv]
                 flags = re.sub('-arch\s+\w+\s', ' ', flags)
-                flags = flags + ' ' + arch
+                flags = f'{flags} {arch}'
                 _save_modified_value(_config_vars, cv, flags)
 
     return _config_vars
@@ -283,7 +282,7 @@ def _check_for_unavailable_sdk(_config_vars):
     cflags = _config_vars.get('CFLAGS', '')
     m = re.search(r'-isysroot\s+(\S+)', cflags)
     if m is not None:
-        sdk = m.group(1)
+        sdk = m[1]
         if not os.path.exists(sdk):
             for cv in _UNIVERSAL_CONFIG_VARS:
                 # Do not alter a config var explicitly overriden by env var
@@ -328,7 +327,7 @@ def compiler_fixup(compiler_so, cc_args):
     if 'ARCHFLAGS' in os.environ and not stripArch:
         # User specified different -arch flags in the environ,
         # see also distutils.sysconfig
-        compiler_so = compiler_so + os.environ['ARCHFLAGS'].split()
+        compiler_so += os.environ['ARCHFLAGS'].split()
 
     if stripSysroot:
         while True:
@@ -432,9 +431,7 @@ def get_platform_osx(_config_vars, osname, release, machine):
 
     macver = _config_vars.get('MACOSX_DEPLOYMENT_TARGET', '')
     macrelease = _get_system_version() or macver
-    macver = macver or macrelease
-
-    if macver:
+    if macver := macver or macrelease:
         release = macver
         osname = "macosx"
 
@@ -442,10 +439,8 @@ def get_platform_osx(_config_vars, osname, release, machine):
         # return the same machine type for the platform string.
         # Otherwise, distutils may consider this a cross-compiling
         # case and disallow installs.
-        cflags = _config_vars.get(_INITPRE+'CFLAGS',
-                                    _config_vars.get('CFLAGS', ''))
-        if ((macrelease + '.') >= '10.4.' and
-            '-arch' in cflags.strip()):
+        cflags = _config_vars.get(f'{_INITPRE}CFLAGS', _config_vars.get('CFLAGS', ''))
+        if f'{macrelease}.' >= '10.4.' and '-arch' in cflags.strip():
             # The universal build will build fat binaries, but not on
             # systems before 10.4
 
@@ -480,9 +475,5 @@ def get_platform_osx(_config_vars, osname, release, machine):
         elif machine in ('PowerPC', 'Power_Macintosh'):
             # Pick a sane name for the PPC architecture.
             # See 'i386' case
-            if sys.maxint >= 2**32:
-                machine = 'ppc64'
-            else:
-                machine = 'ppc'
-
+            machine = 'ppc64' if sys.maxint >= 2**32 else 'ppc'
     return (osname, release, machine)

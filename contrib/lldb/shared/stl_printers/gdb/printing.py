@@ -33,8 +33,7 @@ def print_exc(err_msg):
 
 def type_summary_function(sbvalue, internal_dict):
     for p in gdb.pretty_printers:
-        pp = p(gdb.Value(sbvalue.GetNonSyntheticValue()))
-        if pp:
+        if pp := p(gdb.Value(sbvalue.GetNonSyntheticValue())):
             try:
                 summary = str(pp.to_string())
             except:
@@ -42,7 +41,7 @@ def type_summary_function(sbvalue, internal_dict):
                           'GDB pretty printer.')
                 summary = ''
             if hasattr(pp, 'display_hint') and pp.display_hint() == 'string':
-                summary = '"%s"' % summary
+                summary = f'"{summary}"'
             return summary
     raise RuntimeError('Could not find a pretty printer!')
 
@@ -56,7 +55,7 @@ class GdbPrinterSynthProvider(object):
             try:
                 self._pp = p(gdb.Value(self._sbvalue))
             except:
-                print_exc('Error calling into GDB printer "%s".' % p.name)
+                print_exc(f'Error calling into GDB printer "{p.name}".')
             if self._pp:
                 break
         if not self._pp:
@@ -94,16 +93,15 @@ class GdbPrinterSynthProvider(object):
             try:
                 return int(name.lstrip('[').rstrip(']'))
             except:
-                raise NameError(
-                    'Value does not have a child with name "%s".' % name)
+                raise NameError(f'Value does not have a child with name "{name}".')
 
     def get_child_at_index(self, index):
         assert hasattr(self._pp, 'children')
         self._get_children()
         if self._get_display_hint() == 'map':
             if index < len(self._children):
-                key = self._children[index * 2][1]
                 val = self._children[index * 2 + 1][1]
+                key = self._children[index * 2][1]
                 key_str = key.sbvalue().GetSummary()
                 if not key_str:
                     key_str = key.sbvalue().GetValue()
@@ -111,30 +109,26 @@ class GdbPrinterSynthProvider(object):
                     key_str = str(key)
                 if isinstance(val, gdb.Value):
                     return val.sbvalue().CreateChildAtOffset(
-                        '[%s]' % key_str,
-                        0,
-                        val.sbvalue().GetType())
-                else:
-                    data = lldb.SBData()
-                    data.SetDataFromUInt64Array([int(val)])
-                    return self._sbvalue.CreateValueFromData(
-                        '[%s]' % key_str,
-                        data,
-                        lldb.debugger.GetSelectedTarget().FindFirstType('int'))
-        else:
-            if index < len(self._children):
-                c = self._children[index]
-                if not isinstance(c[1], gdb.Value):
-                    data = lldb.SBData()
-                    data.SetDataFromUInt64Array([int(c[1])])
-                    return self._sbvalue.CreateValueFromData(
-                        c[0],
-                        data,
-                        lldb.debugger.GetSelectedTarget().FindFirstType('int'))
-                else:
-                    return c[1].sbvalue().CreateChildAtOffset(
-                        c[0], 0, c[1].sbvalue().GetType())
-                return sbvalue
+                        f'[{key_str}]', 0, val.sbvalue().GetType()
+                    )
+                data = lldb.SBData()
+                data.SetDataFromUInt64Array([int(val)])
+                return self._sbvalue.CreateValueFromData(
+                    f'[{key_str}]',
+                    data,
+                    lldb.debugger.GetSelectedTarget().FindFirstType('int'),
+                )
+        elif index < len(self._children):
+            c = self._children[index]
+            if isinstance(c[1], gdb.Value):
+                return c[1].sbvalue().CreateChildAtOffset(
+                    c[0], 0, c[1].sbvalue().GetType())
+            data = lldb.SBData()
+            data.SetDataFromUInt64Array([int(c[1])])
+            return self._sbvalue.CreateValueFromData(
+                c[0],
+                data,
+                lldb.debugger.GetSelectedTarget().FindFirstType('int'))
         raise IndexError('Child not present at given index.')
 
     def update(self):
@@ -150,8 +144,7 @@ class GdbPrinterSynthProvider(object):
 def register_pretty_printer(obj, printer):
     gdb.pretty_printers.append(printer)
     if lldb.debugger.GetCategory(printer.name).IsValid():
-        print ('WARNING: A type category with name "%s" already exists.' %
-               printer.name)
+        print(f'WARNING: A type category with name "{printer.name}" already exists.')
         return
     cat = lldb.debugger.CreateCategory(printer.name)
     type_options = (lldb.eTypeOptionCascade |
@@ -160,11 +153,15 @@ def register_pretty_printer(obj, printer):
                     lldb.eTypeOptionHideEmptyAggregates)
     for sp in printer.subprinters:
         cat.AddTypeSummary(
-            lldb.SBTypeNameSpecifier('^%s(<.+>)?(( )?&)?$' % sp.name, True),
+            lldb.SBTypeNameSpecifier(f'^{sp.name}(<.+>)?(( )?&)?$', True),
             lldb.SBTypeSummary.CreateWithFunctionName(
-                'gdb.printing.type_summary_function', type_options))
+                'gdb.printing.type_summary_function', type_options
+            ),
+        )
         cat.AddTypeSynthetic(
-            lldb.SBTypeNameSpecifier('^%s(<.+>)?(( )?&)?$' % sp.name, True),
+            lldb.SBTypeNameSpecifier(f'^{sp.name}(<.+>)?(( )?&)?$', True),
             lldb.SBTypeSynthetic.CreateWithClassName(
-                'gdb.printing.GdbPrinterSynthProvider', type_options))
+                'gdb.printing.GdbPrinterSynthProvider', type_options
+            ),
+        )
     cat.SetEnabled(True)

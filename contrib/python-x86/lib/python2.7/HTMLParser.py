@@ -142,12 +142,11 @@ class HTMLParser(markupbase.ParserBase):
         i = 0
         n = len(rawdata)
         while i < n:
-            match = self.interesting.search(rawdata, i) # < or &
-            if match:
+            if match := self.interesting.search(rawdata, i):
                 j = match.start()
+            elif self.cdata_elem:
+                break
             else:
-                if self.cdata_elem:
-                    break
                 j = n
             if i < j: self.handle_data(rawdata[i:j])
             i = self.updatepos(i, j)
@@ -182,8 +181,7 @@ class HTMLParser(markupbase.ParserBase):
                     self.handle_data(rawdata[i:k])
                 i = self.updatepos(i, k)
             elif startswith("&#", i):
-                match = charref.match(rawdata, i)
-                if match:
+                if match := charref.match(rawdata, i):
                     name = match.group()[2:-1]
                     self.handle_charref(name)
                     k = match.end()
@@ -193,12 +191,11 @@ class HTMLParser(markupbase.ParserBase):
                     continue
                 else:
                     if ";" in rawdata[i:]: #bail by consuming &#
-                        self.handle_data(rawdata[0:2])
+                        self.handle_data(rawdata[:2])
                         i = self.updatepos(i, 2)
                     break
             elif startswith('&', i):
-                match = entityref.match(rawdata, i)
-                if match:
+                if match := entityref.match(rawdata, i):
                     name = match.group(1)
                     self.handle_entityref(name)
                     k = match.end()
@@ -206,8 +203,7 @@ class HTMLParser(markupbase.ParserBase):
                         k = k - 1
                     i = self.updatepos(i, k)
                     continue
-                match = incomplete.match(rawdata, i)
-                if match:
+                if match := incomplete.match(rawdata, i):
                     # match.group() will contain at least 2 chars
                     if end and match.group() == rawdata[i:]:
                         self.error("EOF in middle of entity or char ref")
@@ -330,13 +326,15 @@ class HTMLParser(markupbase.ParserBase):
     # or -1 if incomplete.
     def check_for_whole_start_tag(self, i):
         rawdata = self.rawdata
-        m = locatestarttagend.match(rawdata, i)
-        if m:
+        if m := locatestarttagend.match(rawdata, i):
             j = m.end()
             next = rawdata[j:j+1]
             if next == ">":
                 return j + 1
-            if next == "/":
+            if next == "":
+                # buffer boundary
+                return -1
+            elif next == "/":
                 if rawdata.startswith("/>", j):
                     return j + 2
                 if rawdata.startswith("/", j):
@@ -345,18 +343,12 @@ class HTMLParser(markupbase.ParserBase):
                 # else bogus input
                 self.updatepos(i, j + 1)
                 self.error("malformed empty start tag")
-            if next == "":
-                # end of input
-                return -1
             if next in ("abcdefghijklmnopqrstuvwxyz=/"
                         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
                 # end of input in or before attribute value, or we have the
                 # '/' from a '/>' ending
                 return -1
-            if j > i:
-                return j
-            else:
-                return i + 1
+            return j if j > i else i + 1
         raise AssertionError("we should not get here!")
 
     # Internal -- parse endtag, return end or -1 if incomplete
@@ -376,10 +368,7 @@ class HTMLParser(markupbase.ParserBase):
             namematch = tagfind_tolerant.match(rawdata, i+2)
             if not namematch:
                 # w3.org/TR/html5/tokenization.html#end-tag-open-state
-                if rawdata[i:i+3] == '</>':
-                    return i+3
-                else:
-                    return self.parse_bogus_comment(i)
+                return i+3 if rawdata[i:i+3] == '</>' else self.parse_bogus_comment(i)
             tagname = namematch.group().lower()
             # consume and ignore other stuff between the name and the >
             # Note: this is not 100% correct, since we might have things like
@@ -390,10 +379,9 @@ class HTMLParser(markupbase.ParserBase):
             return gtpos+1
 
         elem = match.group(1).lower() # script or style
-        if self.cdata_elem is not None:
-            if elem != self.cdata_elem:
-                self.handle_data(rawdata[i:gtpos])
-                return gtpos
+        if self.cdata_elem is not None and elem != self.cdata_elem:
+            self.handle_data(rawdata[i:gtpos])
+            return gtpos
 
         self.handle_endtag(elem)
         self.clear_cdata_mode()
@@ -449,13 +437,10 @@ class HTMLParser(markupbase.ParserBase):
             try:
                 if s[0] == "#":
                     s = s[1:]
-                    if s[0] in ['x','X']:
-                        c = int(s[1:], 16)
-                    else:
-                        c = int(s)
+                    c = int(s[1:], 16) if s[0] in ['x','X'] else int(s)
                     return unichr(c)
             except ValueError:
-                return '&#'+s+';'
+                return f'&#{s};'
             else:
                 # Cannot use name2codepoint directly, because HTMLParser supports apos,
                 # which is not part of HTML 4
@@ -467,6 +452,6 @@ class HTMLParser(markupbase.ParserBase):
                 try:
                     return self.entitydefs[s]
                 except KeyError:
-                    return '&'+s+';'
+                    return f'&{s};'
 
         return re.sub(r"&(#?[xX]?(?:[0-9a-fA-F]+|\w{1,8}));", replaceEntities, s)

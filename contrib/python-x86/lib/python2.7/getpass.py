@@ -96,14 +96,11 @@ def win_getpass(prompt='Password: ', stream=None):
     pw = ""
     while 1:
         c = msvcrt.getch()
-        if c == '\r' or c == '\n':
+        if c in ['\r', '\n']:
             break
         if c == '\003':
             raise KeyboardInterrupt
-        if c == '\b':
-            pw = pw[:-1]
-        else:
-            pw = pw + c
+        pw = pw[:-1] if c == '\b' else pw + c
     msvcrt.putch('\r')
     msvcrt.putch('\n')
     return pw
@@ -125,8 +122,7 @@ def _raw_input(prompt="", stream=None, input=None):
         stream = sys.stderr
     if not input:
         input = sys.stdin
-    prompt = str(prompt)
-    if prompt:
+    if prompt := str(prompt):
         stream.write(prompt)
         stream.flush()
     # NOTE: The Python C API calls flockfile() (and unlock) during readline.
@@ -149,8 +145,7 @@ def getuser():
     import os
 
     for name in ('LOGNAME', 'USER', 'LNAME', 'USERNAME'):
-        user = os.environ.get(name)
-        if user:
+        if user := os.environ.get(name):
             return user
 
     # If this fails, the exception will "explain" why

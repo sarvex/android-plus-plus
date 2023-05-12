@@ -159,10 +159,10 @@ class FTP:
 
     # Internal: "sanitize" a string for printing
     def sanitize(self, s):
-        if s[:5] == 'pass ' or s[:5] == 'PASS ':
+        if s[:5] in ['pass ', 'PASS ']:
             i = len(s)
             while i > 5 and s[i-1] in '\r\n':
-                i = i-1
+                i -= 1
             s = s[:5] + '*'*(i-5) + s[i:]
         return repr(s)
 
@@ -324,13 +324,12 @@ class FTP:
         marker used to tell the server to skip over any data up to the
         given marker.
         """
-        size = None
         if self.passiveserver:
             host, port = self.makepasv()
             conn = socket.create_connection((host, port), self.timeout)
             try:
                 if rest is not None:
-                    self.sendcmd("REST %s" % rest)
+                    self.sendcmd(f"REST {rest}")
                 resp = self.sendcmd(cmd)
                 # Some servers apparently send a 200 reply to
                 # a LIST or STOR command, before the 150 reply
@@ -349,7 +348,7 @@ class FTP:
             sock = self.makeport()
             try:
                 if rest is not None:
-                    self.sendcmd("REST %s" % rest)
+                    self.sendcmd(f"REST {rest}")
                 resp = self.sendcmd(cmd)
                 # See above.
                 if resp[0] == '2':
@@ -361,9 +360,7 @@ class FTP:
                     conn.settimeout(self.timeout)
             finally:
                 sock.close()
-        if resp[:3] == '150':
-            # this is conditional in case we received a 125
-            size = parse150(resp)
+        size = parse150(resp) if resp[:3] == '150' else None
         return conn, size
 
     def transfercmd(self, cmd, rest=None):
@@ -383,10 +380,12 @@ class FTP:
             # - We want to stop SPAM
             # - We don't want to let ftp sites to discriminate by the user,
             #   host or country.
-            passwd = passwd + 'anonymous@'
-        resp = self.sendcmd('USER ' + user)
-        if resp[0] == '3': resp = self.sendcmd('PASS ' + passwd)
-        if resp[0] == '3': resp = self.sendcmd('ACCT ' + acct)
+            passwd = f'{passwd}anonymous@'
+        resp = self.sendcmd(f'USER {user}')
+        if resp[0] == '3':
+            resp = self.sendcmd(f'PASS {passwd}')
+        if resp[0] == '3':
+            resp = self.sendcmd(f'ACCT {acct}')
         if resp[0] != '2':
             raise error_reply, resp
         return resp
@@ -408,10 +407,10 @@ class FTP:
         self.voidcmd('TYPE I')
         conn = self.transfercmd(cmd, rest)
         while 1:
-            data = conn.recv(blocksize)
-            if not data:
+            if data := conn.recv(blocksize):
+                callback(data)
+            else:
                 break
-            callback(data)
         conn.close()
         return self.voidresp()
 
@@ -497,14 +496,14 @@ class FTP:
 
     def acct(self, password):
         '''Send new account name.'''
-        cmd = 'ACCT ' + password
+        cmd = f'ACCT {password}'
         return self.voidcmd(cmd)
 
     def nlst(self, *args):
         '''Return a list of files in a given directory (default the current).'''
         cmd = 'NLST'
         for arg in args:
-            cmd = cmd + (' ' + arg)
+            cmd = f'{cmd} {arg}'
         files = []
         self.retrlines(cmd, files.append)
         return files
@@ -521,19 +520,19 @@ class FTP:
             args, func = args[:-1], args[-1]
         for arg in args:
             if arg:
-                cmd = cmd + (' ' + arg)
+                cmd = f'{cmd} {arg}'
         self.retrlines(cmd, func)
 
     def rename(self, fromname, toname):
         '''Rename a file.'''
-        resp = self.sendcmd('RNFR ' + fromname)
+        resp = self.sendcmd(f'RNFR {fromname}')
         if resp[0] != '3':
             raise error_reply, resp
-        return self.voidcmd('RNTO ' + toname)
+        return self.voidcmd(f'RNTO {toname}')
 
     def delete(self, filename):
         '''Delete a file.'''
-        resp = self.sendcmd('DELE ' + filename)
+        resp = self.sendcmd(f'DELE {filename}')
         if resp[:3] in ('250', '200'):
             return resp
         else:
@@ -555,7 +554,7 @@ class FTP:
     def size(self, filename):
         '''Retrieve the size of a file.'''
         # The SIZE command is defined in RFC-3659
-        resp = self.sendcmd('SIZE ' + filename)
+        resp = self.sendcmd(f'SIZE {filename}')
         if resp[:3] == '213':
             s = resp[3:].strip()
             try:
@@ -565,12 +564,12 @@ class FTP:
 
     def mkd(self, dirname):
         '''Make a directory, return its full pathname.'''
-        resp = self.sendcmd('MKD ' + dirname)
+        resp = self.sendcmd(f'MKD {dirname}')
         return parse257(resp)
 
     def rmd(self, dirname):
         '''Remove a directory.'''
-        return self.voidcmd('RMD ' + dirname)
+        return self.voidcmd(f'RMD {dirname}')
 
     def pwd(self):
         '''Return current working directory.'''
@@ -692,10 +691,10 @@ else:
             conn = self.transfercmd(cmd, rest)
             try:
                 while 1:
-                    data = conn.recv(blocksize)
-                    if not data:
+                    if data := conn.recv(blocksize):
+                        callback(data)
+                    else:
                         break
-                    callback(data)
                 # shutdown ssl layer
                 if isinstance(conn, ssl.SSLSocket):
                     conn.unwrap()
@@ -847,11 +846,11 @@ def parse257(resp):
     n = len(resp)
     while i < n:
         c = resp[i]
-        i = i+1
+        i += 1
         if c == '"':
             if i >= n or resp[i] != '"':
                 break
-            i = i+1
+            i += 1
         dirname = dirname + c
     return dirname
 
@@ -864,7 +863,7 @@ def print_line(line):
 def ftpcp(source, sourcename, target, targetname = '', type = 'I'):
     '''Copy file from one FTP-instance to another.'''
     if not targetname: targetname = sourcename
-    type = 'TYPE ' + type
+    type = f'TYPE {type}'
     source.voidcmd(type)
     target.voidcmd(type)
     sourcehost, sourceport = parse227(source.sendcmd('PASV'))
@@ -872,9 +871,9 @@ def ftpcp(source, sourcename, target, targetname = '', type = 'I'):
     # RFC 959: the user must "listen" [...] BEFORE sending the
     # transfer request.
     # So: STOR before RETR, because here the target is a "user".
-    treply = target.sendcmd('STOR ' + targetname)
+    treply = target.sendcmd(f'STOR {targetname}')
     if treply[:3] not in ('125', '150'): raise error_proto  # RFC 959
-    sreply = source.sendcmd('RETR ' + sourcename)
+    sreply = source.sendcmd(f'RETR {sourcename}')
     if sreply[:3] not in ('125', '150'): raise error_proto  # RFC 959
     source.voidresp()
     target.voidresp()
@@ -899,63 +898,60 @@ class Netrc:
                                         ".netrc")
             else:
                 raise IOError, \
-                      "specify file to load or set $HOME"
+                          "specify file to load or set $HOME"
         self.__hosts = {}
         self.__macros = {}
-        fp = open(filename, "r")
-        in_macro = 0
-        while 1:
-            line = fp.readline()
-            if not line: break
-            if in_macro and line.strip():
-                macro_lines.append(line)
-                continue
-            elif in_macro:
-                self.__macros[macro_name] = tuple(macro_lines)
-                in_macro = 0
-            words = line.split()
-            host = user = passwd = acct = None
-            default = 0
-            i = 0
-            while i < len(words):
-                w1 = words[i]
-                if i+1 < len(words):
-                    w2 = words[i + 1]
-                else:
-                    w2 = None
-                if w1 == 'default':
-                    default = 1
-                elif w1 == 'machine' and w2:
-                    host = w2.lower()
-                    i = i + 1
-                elif w1 == 'login' and w2:
-                    user = w2
-                    i = i + 1
-                elif w1 == 'password' and w2:
-                    passwd = w2
-                    i = i + 1
-                elif w1 == 'account' and w2:
-                    acct = w2
-                    i = i + 1
-                elif w1 == 'macdef' and w2:
-                    macro_name = w2
-                    macro_lines = []
-                    in_macro = 1
-                    break
-                i = i + 1
-            if default:
-                self.__defuser = user or self.__defuser
-                self.__defpasswd = passwd or self.__defpasswd
-                self.__defacct = acct or self.__defacct
-            if host:
-                if host in self.__hosts:
-                    ouser, opasswd, oacct = \
-                           self.__hosts[host]
-                    user = user or ouser
-                    passwd = passwd or opasswd
-                    acct = acct or oacct
-                self.__hosts[host] = user, passwd, acct
-        fp.close()
+        with open(filename, "r") as fp:
+            in_macro = 0
+            while 1:
+                line = fp.readline()
+                if not line: break
+                if in_macro:
+                    if line.strip():
+                        macro_lines.append(line)
+                        continue
+                    else:
+                        self.__macros[macro_name] = tuple(macro_lines)
+                        in_macro = 0
+                words = line.split()
+                host = user = passwd = acct = None
+                default = 0
+                i = 0
+                while i < len(words):
+                    w1 = words[i]
+                    w2 = words[i + 1] if i+1 < len(words) else None
+                    if w1 == 'default':
+                        default = 1
+                    elif w1 == 'machine' and w2:
+                        host = w2.lower()
+                        i += 1
+                    elif w1 == 'login' and w2:
+                        user = w2
+                        i += 1
+                    elif w1 == 'password' and w2:
+                        passwd = w2
+                        i += 1
+                    elif w1 == 'account' and w2:
+                        acct = w2
+                        i += 1
+                    elif w1 == 'macdef' and w2:
+                        macro_name = w2
+                        macro_lines = []
+                        in_macro = 1
+                        break
+                    i += 1
+                if default:
+                    self.__defuser = user or self.__defuser
+                    self.__defpasswd = passwd or self.__defpasswd
+                    self.__defacct = acct or self.__defacct
+                if host:
+                    if host in self.__hosts:
+                        ouser, opasswd, oacct = \
+                                   self.__hosts[host]
+                        user = user or ouser
+                        passwd = passwd or opasswd
+                        acct = acct or oacct
+                    self.__hosts[host] = user, passwd, acct
 
     def get_hosts(self):
         """Return a list of hosts mentioned in the .netrc file."""

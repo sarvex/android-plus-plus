@@ -41,8 +41,7 @@ def iglob(pathname):
         return
     dirname, basename = os.path.split(pathname)
     if not dirname:
-        for name in glob1(os.curdir, basename):
-            yield name
+        yield from glob1(os.curdir, basename)
         return
     # `os.path.split()` returns the argument itself as a dirname if it is a
     # drive or UNC path.  Prevent an infinite recursion if a drive or UNC path
@@ -51,10 +50,7 @@ def iglob(pathname):
         dirs = iglob(dirname)
     else:
         dirs = [dirname]
-    if has_magic(basename):
-        glob_in_dir = glob1
-    else:
-        glob_in_dir = glob0
+    glob_in_dir = glob1 if has_magic(basename) else glob0
     for dirname in dirs:
         for name in glob_in_dir(dirname, basename):
             yield os.path.join(dirname, name)
@@ -83,9 +79,8 @@ def glob0(dirname, basename):
         # directory separator.  'q*x/' should match only directories.
         if os.path.isdir(dirname):
             return [basename]
-    else:
-        if os.path.lexists(os.path.join(dirname, basename)):
-            return [basename]
+    elif os.path.lexists(os.path.join(dirname, basename)):
+        return [basename]
     return []
 
 

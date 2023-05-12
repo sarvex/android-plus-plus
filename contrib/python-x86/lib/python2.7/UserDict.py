@@ -56,9 +56,7 @@ class UserDict:
         if len(kwargs):
             self.data.update(kwargs)
     def get(self, key, failobj=None):
-        if key not in self:
-            return failobj
-        return self[key]
+        return failobj if key not in self else self[key]
     def setdefault(self, key, failobj=None):
         if key not in self:
             self[key] = failobj
@@ -94,8 +92,7 @@ class DictMixin:
 
     # second level definitions support higher levels
     def __iter__(self):
-        for k in self.keys():
-            yield k
+        yield from self.keys()
     def has_key(self, key):
         try:
             self[key]

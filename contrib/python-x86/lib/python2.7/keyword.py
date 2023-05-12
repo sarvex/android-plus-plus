@@ -55,26 +55,18 @@ def main():
 
     args = sys.argv[1:]
     iptfile = args and args[0] or "Python/graminit.c"
-    if len(args) > 1: optfile = args[1]
-    else: optfile = "Lib/keyword.py"
-
-    # scan the source file for keywords
-    fp = open(iptfile)
-    strprog = re.compile('"([^"]+)"')
-    lines = []
-    for line in fp:
-        if '{1, "' in line:
-            match = strprog.search(line)
-            if match:
-                lines.append("        '" + match.group(1) + "',\n")
-    fp.close()
+    optfile = args[1] if len(args) > 1 else "Lib/keyword.py"
+    with open(iptfile) as fp:
+        strprog = re.compile('"([^"]+)"')
+        lines = []
+        for line in fp:
+            if '{1, "' in line:
+                if match := strprog.search(line):
+                    lines.append(f"        '{match.group(1)}" + "',\n")
     lines.sort()
 
-    # load the output skeleton from the target
-    fp = open(optfile)
-    format = fp.readlines()
-    fp.close()
-
+    with open(optfile) as fp:
+        format = fp.readlines()
     # insert the lines of keywords
     try:
         start = format.index("#--start keywords--\n") + 1
@@ -84,10 +76,8 @@ def main():
         sys.stderr.write("target does not contain format markers\n")
         sys.exit(1)
 
-    # write the output file
-    fp = open(optfile, 'w')
-    fp.write(''.join(format))
-    fp.close()
+    with open(optfile, 'w') as fp:
+        fp.write(''.join(format))
 
 if __name__ == "__main__":
     main()

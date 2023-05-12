@@ -213,11 +213,10 @@ class Type(object):
             base_sbtype_i = Type(base_mem.GetType()).strip_typedefs().sbtype()
             if base_sbtype_i == base_sbtype:
                 return (True, base_mem.GetOffsetInBytes())
-            else:
-                is_baseclass, offset = Type(base_sbtype_i)._is_baseclass(
-                    baseclass_sbtype)
-                if is_baseclass:
-                    return (True, base_mem.GetOffsetInBytes() + offset)
+            is_baseclass, offset = Type(base_sbtype_i)._is_baseclass(
+                baseclass_sbtype)
+            if is_baseclass:
+                return (True, base_mem.GetOffsetInBytes() + offset)
         return (False, None)
 
     def __str__(self):
@@ -261,8 +260,9 @@ class Type(object):
         elif type_class == lldb.eTypeClassFunction:
             return Type(self._sbtype_object.GetFunctionReturnType())
         else:
-            raise TypeError('Type "%s" cannot have target type.' %
-                            self._sbtype_object.GetName())
+            raise TypeError(
+                f'Type "{self._sbtype_object.GetName()}" cannot have target type.'
+            )
 
     def strip_typedefs(self):
         sbtype = self._sbtype_object
@@ -292,9 +292,11 @@ class Type(object):
                 fields.append(EnumField(e.GetName(),
                                         e.GetValueAsSigned(),
                                         Type(e.GetType())))
-        elif (type_class == lldb.eTypeClassUnion or
-              type_class == lldb.eTypeClassStruct or
-              type_class == lldb.eTypeClassClass):
+        elif type_class in [
+            lldb.eTypeClassUnion,
+            lldb.eTypeClassStruct,
+            lldb.eTypeClassClass,
+        ]:
             n_baseclasses = self._sbtype_object.GetNumberOfDirectBaseClasses()
             for i in range(0, n_baseclasses):
                 c = self._sbtype_object.GetDirectBaseClassAtIndex(i)
@@ -306,8 +308,7 @@ class Type(object):
                                           f.GetBitfieldSizeInBits(),
                                           self))
         else:
-            raise TypeError('Type "%s" cannot have fields.' %
-                            self._sbtype_object.GetName())
+            raise TypeError(f'Type "{self._sbtype_object.GetName()}" cannot have fields.')
         return fields
 
 
@@ -353,11 +354,12 @@ class Value(object):
 
     def _binary_op(self, other, op, reverse=False):
         sbtype, type_class = self._stripped_sbtype()
-        if type_class == lldb.eTypeClassPointer:
-            if not (op == OP_ADD or op == OP_SUB) or reverse:
-                raise TypeError(
-                    'Invalid binary operation on/with pointer value.')
-        if isinstance(other, int) or isinstance(other, long):
+        if type_class == lldb.eTypeClassPointer and (
+            op not in [OP_ADD, OP_SUB] or reverse
+        ):
+            raise TypeError(
+                'Invalid binary operation on/with pointer value.')
+        if isinstance(other, (int, long)):
             other_val = other
             other_sbtype = get_builtin_sbtype('long')
             other_type_class = lldb.eTypeClassBuiltin
@@ -367,8 +369,9 @@ class Value(object):
             other_type_class = lldb.eTypeClassBuiltin
         elif isinstance(other, Value):
             other_sbtype, other_type_class = other._stripped_sbtype()
-            if (other_type_class == lldb.eTypeClassPointer and
-                not (type_class == lldb.eTypeClassPointer and op == OP_SUB)):
+            if other_type_class == lldb.eTypeClassPointer and (
+                type_class != lldb.eTypeClassPointer or op != OP_SUB
+            ):
                 raise TypeError(
                     'Invalid binary operation on/with pointer value.')
             other_val = other._as_number()
@@ -395,18 +398,16 @@ class Value(object):
         elif op == OP_SUB:
             if reverse:
                 res = other_val - self._as_number()
+            elif type_class == lldb.eTypeClassPointer:
+                if other_type_class != lldb.eTypeClassPointer:
+                    return self._binary_op(- other_val, OP_ADD)
+                if sbtype != other_sbtype:
+                    raise TypeError('Arithmetic operation on '
+                                    'incompatible pointer types.')
+                diff = self._as_number() - other_val
+                return diff / sbtype.GetPointeeType().GetByteSize()
             else:
-                if type_class == lldb.eTypeClassPointer:
-                    if other_type_class == lldb.eTypeClassPointer:
-                        if sbtype != other_sbtype:
-                            raise TypeError('Arithmetic operation on '
-                                            'incompatible pointer types.')
-                        diff = self._as_number() - other_val
-                        return diff / sbtype.GetPointeeType().GetByteSize()
-                    else:
-                        return self._binary_op(- other_val, OP_ADD)
-                else:
-                    res = self._as_number() - other_val
+                res = self._as_number() - other_val
         elif op == OP_LSHIFT:
             if reverse:
                 return other_val << self._as_number()
@@ -425,8 +426,7 @@ class Value(object):
             '', data, self._sbvalue_object.GetType()))
 
     def _cmp(self, other):
-        if (isinstance(other, int) or isinstance(other, long) or
-            isinstance(other, float)):
+        if isinstance(other, (int, long, float)):
             other_val = other
         elif isinstance(other, Value):
             other_val = other._as_number()
@@ -467,20 +467,22 @@ class Value(object):
             stripped_sbval = val.sbvalue().Cast(stripped_sbtype)
         else:
             stripped_sbval = self._sbvalue_object.Cast(stripped_sbtype)
-        if (type_class == lldb.eTypeClassClass or
-            type_class == lldb.eTypeClassStruct or
-            type_class == lldb.eTypeClassUnion):
+        if type_class in [
+            lldb.eTypeClassClass,
+            lldb.eTypeClassStruct,
+            lldb.eTypeClassUnion,
+        ]:
             if not isinstance(index, str):
                 raise KeyError('Key value used to subscript a '
                                'class/struct/union value is not a string.')
             mem_sbval = stripped_sbval.GetChildMemberWithName(index)
             if (not mem_sbval) or (not mem_sbval.IsValid()):
                 raise KeyError(
-                    'No member with name "%s" in value of type "%s".' %
-                    (index, sbtype.GetName()))
+                    f'No member with name "{index}" in value of type "{sbtype.GetName()}".'
+                )
             return Value(mem_sbval)
 
-        if not (isinstance(index, int) or isinstance(index, long)):
+        if not (isinstance(index, (int, long))):
             raise KeyError('Unsupported key type for "[]" operator.')
 
         if type_class == lldb.eTypeClassPointer:
@@ -490,8 +492,7 @@ class Value(object):
             addr = self._sbvalue_object.GetLoadAddress()
             elem_sbtype = self._sbvalue_object.GetType().GetArrayElementType()
         else:
-            raise TypeError('Cannot use "[]" operator on values of type "%s".' %
-                            str(sbtype))
+            raise TypeError(f'Cannot use "[]" operator on values of type "{str(sbtype)}".')
         new_addr = addr + index * elem_sbtype.GetByteSize()
         return Value(self._sbvalue_object.CreateValueFromAddress(
              "", new_addr, elem_sbtype))
@@ -510,49 +511,32 @@ class Value(object):
 
     def __nonzero__(self):
         sbtype, type_class = self._stripped_sbtype()
-        if ((type_class == lldb.eTypeClassPointer) or
-            (type_class in BASIC_UNSIGNED_INTEGER_TYPES) or
-            (type_class in BASIC_UNSIGNED_INTEGER_TYPES) or
-            (type_class in BASIC_FLOAT_TYPES)):
+        if (
+            type_class == lldb.eTypeClassPointer
+            or type_class in BASIC_UNSIGNED_INTEGER_TYPES
+            or type_class in BASIC_FLOAT_TYPES
+        ):
             return self._as_number() != 0
         else:
             return self._sbvalue_object.IsValid()
 
     def __eq__(self, other):
-        if self._cmp(other) == 0:
-            return True
-        else:
-            return False
+        return self._cmp(other) == 0
 
     def __ne__(self, other):
-        if self._cmp(other) != 0:
-            return True
-        else:
-            return False
+        return self._cmp(other) != 0
 
     def __lt__(self, other):
-        if self._cmp(other) < 0:
-            return True
-        else:
-            return False
+        return self._cmp(other) < 0
 
     def __le__(self, other):
-        if self._cmp(other) <= 0:
-            return True
-        else:
-            return False
+        return self._cmp(other) <= 0
 
     def __gt__(self, other):
-        if self._cmp(other) > 0:
-            return True
-        else:
-            return False
+        return self._cmp(other) > 0
 
     def __ge__(self, other):
-        if self._cmp(other) >= 0:
-            return True
-        else:
-            return False
+        return self._cmp(other) >= 0
 
     def __and__(self, other):
         return self._binary_op(other, OP_BITWISE_AND)
@@ -644,10 +628,9 @@ def lookup_type(name, block=None):
         t = typelist.GetTypeAtIndex(i)
         if t.GetName() == name:
             return Type(t)
-        else:
-            canonical_sbtype = t.GetCanonicalType()
-            if canonical_sbtype.GetName() == name:
-                return Type(canonical_sbtype)
+        canonical_sbtype = t.GetCanonicalType()
+        if canonical_sbtype.GetName() == name:
+            return Type(canonical_sbtype)
     raise RuntimeError('Type "%s" not found in %d matches.' % (name, count))
 
 
@@ -657,6 +640,5 @@ def current_objfile():
 
 def default_visualizer(value):
     for p in pretty_printers:
-        pp = p(value)
-        if pp:
+        if pp := p(value):
             return pp

@@ -341,10 +341,9 @@ def getmro(cls):
     "Return tuple of base classes (including cls) in method resolution order."
     if hasattr(cls, "__mro__"):
         return cls.__mro__
-    else:
-        result = []
-        _searchbases(cls, result)
-        return tuple(result)
+    result = []
+    _searchbases(cls, result)
+    return tuple(result)
 
 # -------------------------------------------------- source code extraction
 def indentsize(line):
@@ -362,9 +361,7 @@ def getdoc(object):
         doc = object.__doc__
     except AttributeError:
         return None
-    if not isinstance(doc, types.StringTypes):
-        return None
-    return cleandoc(doc)
+    return None if not isinstance(doc, types.StringTypes) else cleandoc(doc)
 
 def cleandoc(doc):
     """Clean up indentation from docstrings.
@@ -379,8 +376,7 @@ def cleandoc(doc):
         # Find minimum indentation of any non-blank lines after first line.
         margin = sys.maxint
         for line in lines[1:]:
-            content = len(string.lstrip(line))
-            if content:
+            if content := len(string.lstrip(line)):
                 indent = len(line) - content
                 margin = min(margin, indent)
         # Remove indentation.
@@ -434,8 +430,8 @@ def getmoduleinfo(path):
 
 def getmodulename(path):
     """Return the module name for a given file, or None."""
-    info = getmoduleinfo(path)
-    if info: return info[0]
+    if info := getmoduleinfo(path):
+        return info[0]
 
 def getsourcefile(object):
     """Return the filename that can be used to locate an object's source.
@@ -443,7 +439,7 @@ def getsourcefile(object):
     """
     filename = getfile(object)
     if string.lower(filename[-4:]) in ('.pyc', '.pyo'):
-        filename = filename[:-4] + '.py'
+        filename = f'{filename[:-4]}.py'
     for suffix, mode, kind in imp.get_suffixes():
         if 'b' in mode and string.lower(filename[-len(suffix):]) == suffix:
             # Looks like a binary file.  We want to only return a text file.
@@ -529,8 +525,7 @@ def findsource(object):
         raise IOError('source code not available')
     file = sourcefile if sourcefile else file
 
-    module = getmodule(object, file)
-    if module:
+    if module := getmodule(object, file):
         lines = linecache.getlines(file, module.__dict__)
     else:
         lines = linecache.getlines(file)
@@ -548,21 +543,19 @@ def findsource(object):
         # that's most probably not inside a function definition.
         candidates = []
         for i in range(len(lines)):
-            match = pat.match(lines[i])
-            if match:
+            if match := pat.match(lines[i]):
                 # if it's at toplevel, it's already the best one
                 if lines[i][0] == 'c':
                     return lines, i
                 # else add whitespace to candidate list
-                candidates.append((match.group(1), i))
-        if candidates:
-            # this will sort by whitespace, and by line number,
-            # less whitespace first
-            candidates.sort()
-            return lines, candidates[0][1]
-        else:
+                candidates.append((match[1], i))
+        if not candidates:
             raise IOError('could not find class definition')
 
+        # this will sort by whitespace, and by line number,
+        # less whitespace first
+        candidates.sort()
+        return lines, candidates[0][1]
     if ismethod(object):
         object = object.im_func
     if isfunction(object):
@@ -593,20 +586,17 @@ def getcomments(object):
         return None
 
     if ismodule(object):
-        # Look for a comment block at the top of the file.
-        start = 0
-        if lines and lines[0][:2] == '#!': start = 1
+        start = 1 if lines and lines[0][:2] == '#!' else 0
         while start < len(lines) and string.strip(lines[start]) in ('', '#'):
-            start = start + 1
+            start += 1
         if start < len(lines) and lines[start][:1] == '#':
             comments = []
             end = start
             while end < len(lines) and lines[end][:1] == '#':
                 comments.append(string.expandtabs(lines[end]))
-                end = end + 1
+                end += 1
             return string.join(comments, '')
 
-    # Look for a preceding block of comments at the same indentation.
     elif lnum > 0:
         indent = indentsize(lines[lnum])
         end = lnum - 1
@@ -689,8 +679,7 @@ def getsourcelines(object):
     raised if the source code cannot be retrieved."""
     lines, lnum = findsource(object)
 
-    if ismodule(object): return lines, 0
-    else: return getblock(lines[lnum:]), lnum + 1
+    return (lines, 0) if ismodule(object) else (getblock(lines[lnum:]), lnum + 1)
 
 def getsource(object):
     """Return the text of the source code for an object.
@@ -726,15 +715,13 @@ def getclasstree(classes, unique=0):
     for c in classes:
         if c.__bases__:
             for parent in c.__bases__:
-                if not parent in children:
+                if parent not in children:
                     children[parent] = []
                 children[parent].append(c)
                 if unique and parent in classes: break
         elif c not in roots:
             roots.append(c)
-    for parent in children:
-        if parent not in classes:
-            roots.append(parent)
+    roots.extend(parent for parent in children if parent not in classes)
     return walktree(roots, children, None)
 
 # ------------------------------------------------ argument list extraction
@@ -761,11 +748,11 @@ def getargs(co):
             stack, remain, count = [], [], []
             while step < len(co.co_code):
                 op = ord(co.co_code[step])
-                step = step + 1
+                step += 1
                 if op >= dis.HAVE_ARGUMENT:
                     opname = dis.opname[op]
                     value = ord(co.co_code[step]) + ord(co.co_code[step+1])*256
-                    step = step + 2
+                    step += 2
                     if opname in ('UNPACK_TUPLE', 'UNPACK_SEQUENCE'):
                         remain.append(value)
                         count.append(value)
@@ -793,9 +780,7 @@ def getargs(co):
     if co.co_flags & CO_VARARGS:
         varargs = co.co_varnames[nargs]
         nargs = nargs + 1
-    varkw = None
-    if co.co_flags & CO_VARKEYWORDS:
-        varkw = co.co_varnames[nargs]
+    varkw = co.co_varnames[nargs] if co.co_flags & CO_VARKEYWORDS else None
     return Arguments(args, varargs, varkw)
 
 ArgSpec = namedtuple('ArgSpec', 'args varargs keywords defaults')
@@ -829,10 +814,7 @@ def getargvalues(frame):
     return ArgInfo(args, varargs, varkw, frame.f_locals)
 
 def joinseq(seq):
-    if len(seq) == 1:
-        return '(' + seq[0] + ',)'
-    else:
-        return '(' + string.join(seq, ', ') + ')'
+    return f'({seq[0]},)' if len(seq) == 1 else '(' + string.join(seq, ', ') + ')'
 
 def strseq(object, convert, join=joinseq):
     """Recursively walk a sequence, stringifying each element."""
@@ -841,12 +823,7 @@ def strseq(object, convert, join=joinseq):
     else:
         return convert(object)
 
-def formatargspec(args, varargs=None, varkw=None, defaults=None,
-                  formatarg=str,
-                  formatvarargs=lambda name: '*' + name,
-                  formatvarkw=lambda name: '**' + name,
-                  formatvalue=lambda value: '=' + repr(value),
-                  join=joinseq):
+def formatargspec(args, varargs=None, varkw=None, defaults=None, formatarg=str, formatvarargs=lambda name: f'*{name}', formatvarkw=lambda name: f'**{name}', formatvalue=lambda value: f'={repr(value)}', join=joinseq):
     """Format an argument spec from the 4 values returned by getargspec.
 
     The first four arguments are (args, varargs, varkw, defaults).  The
@@ -867,12 +844,7 @@ def formatargspec(args, varargs=None, varkw=None, defaults=None,
         specs.append(formatvarkw(varkw))
     return '(' + string.join(specs, ', ') + ')'
 
-def formatargvalues(args, varargs, varkw, locals,
-                    formatarg=str,
-                    formatvarargs=lambda name: '*' + name,
-                    formatvarkw=lambda name: '**' + name,
-                    formatvalue=lambda value: '=' + repr(value),
-                    join=joinseq):
+def formatargvalues(args, varargs, varkw, locals, formatarg=str, formatvarargs=lambda name: f'*{name}', formatvarkw=lambda name: f'**{name}', formatvalue=lambda value: f'={repr(value)}', join=joinseq):
     """Format an argument spec from the 4 values returned by getargvalues.
 
     The first four arguments are (args, varargs, varkw, locals).  The
@@ -922,10 +894,12 @@ def getcallargs(func, *positional, **named):
                 pass
             else:
                 raise ValueError('too many values to unpack')
+
     def is_assigned(arg):
         if isinstance(arg,str):
             return arg in arg2value
         return arg in assigned_tuple_params
+
     if ismethod(func) and func.im_self is not None:
         # implicit 'self' (or 'cls' for classmethods) argument
         positional = (func.im_self,) + positional
@@ -970,8 +944,9 @@ def getcallargs(func, *positional, **named):
         unexpected = next(iter(named))
         if isinstance(unexpected, unicode):
             unexpected = unexpected.encode(sys.getdefaultencoding(), 'replace')
-        raise TypeError("%s() got an unexpected keyword argument '%s'" %
-                        (f_name, unexpected))
+        raise TypeError(
+            f"{f_name}() got an unexpected keyword argument '{unexpected}'"
+        )
     unassigned = num_args - len([arg for arg in args if is_assigned(arg)])
     if unassigned:
         num_required = num_args - num_defaults

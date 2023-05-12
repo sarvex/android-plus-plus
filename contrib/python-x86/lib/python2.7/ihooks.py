@@ -115,8 +115,8 @@ class BasicModuleLoader(_Verbose):
         if path is None:
             path = [None] + self.default_path()
         for dir in path:
-            stuff = self.find_module_in_dir(name, dir)
-            if stuff: return stuff
+            if stuff := self.find_module_in_dir(name, dir):
+                return stuff
         return None
 
     def default_path(self):
@@ -125,19 +125,16 @@ class BasicModuleLoader(_Verbose):
     def find_module_in_dir(self, name, dir):
         if dir is None:
             return self.find_builtin_module(name)
-        else:
-            try:
-                return imp.find_module(name, [dir])
-            except ImportError:
-                return None
+        try:
+            return imp.find_module(name, [dir])
+        except ImportError:
+            return None
 
     def find_builtin_module(self, name):
         # XXX frozen packages?
         if imp.is_builtin(name):
             return None, '', ('', '', BUILTIN_MODULE)
-        if imp.is_frozen(name):
-            return None, '', ('', '', FROZEN_MODULE)
-        return None
+        return (None, '', ('', '', FROZEN_MODULE)) if imp.is_frozen(name) else None
 
     def load_module(self, name, stuff):
         file, filename, info = stuff
@@ -243,10 +240,9 @@ class ModuleLoader(BasicModuleLoader):
         if allow_packages:
             fullname = self.hooks.path_join(dir, name)
             if self.hooks.path_isdir(fullname):
-                stuff = self.find_module_in_dir("__init__", fullname, 0)
-                if stuff:
-                    file = stuff[0]
-                    if file: file.close()
+                if stuff := self.find_module_in_dir("__init__", fullname, 0):
+                    if file := stuff[0]:
+                        file.close()
                     return None, fullname, ('', '', PKG_DIRECTORY)
         for info in self.hooks.get_suffixes():
             suff, mode, type = info
@@ -363,17 +359,17 @@ class BasicModuleImporter(_Verbose):
         name = str(name)
         if name in self.modules:
             return self.modules[name] # Fast path
-        stuff = self.loader.find_module(name)
-        if not stuff:
-            raise ImportError, "No module named %s" % name
-        return self.loader.load_module(name, stuff)
+        if stuff := self.loader.find_module(name):
+            return self.loader.load_module(name, stuff)
+        else:
+            raise (ImportError, f"No module named {name}")
 
     def reload(self, module, path = None):
         name = str(module.__name__)
-        stuff = self.loader.find_module(name, path)
-        if not stuff:
-            raise ImportError, "Module %s not found for reload" % name
-        return self.loader.load_module(name, stuff)
+        if stuff := self.loader.find_module(name, path):
+            return self.loader.load_module(name, stuff)
+        else:
+            raise (ImportError, f"Module {name} not found for reload")
 
     def unload(self, module):
         del self.modules[str(module.__name__)]
@@ -416,10 +412,7 @@ class ModuleImporter(BasicModuleImporter):
         if not globals or not level:
             return None
         pkgname = globals.get('__package__')
-        if pkgname is not None:
-            if not pkgname and level > 0:
-                raise ValueError, 'Attempted relative import in non-package'
-        else:
+        if pkgname is None:
             # __package__ not set, figure it out and set it
             modname = globals.get('__name__')
             if modname is None:
@@ -437,9 +430,11 @@ class ModuleImporter(BasicModuleImporter):
                     return None
                 pkgname = modname.rpartition('.')[0]
             globals['__package__'] = pkgname
+        elif not pkgname and level > 0:
+            raise ValueError, 'Attempted relative import in non-package'
         if level > 0:
             dot = len(pkgname)
-            for x in range(level, 1, -1):
+            for _ in range(level, 1, -1):
                 try:
                     dot = pkgname.rindex('.', 0, dot)
                 except ValueError:
@@ -449,13 +444,17 @@ class ModuleImporter(BasicModuleImporter):
         try:
             return sys.modules[pkgname]
         except KeyError:
-            if level < 1:
-                warn("Parent module '%s' not found while handling "
-                     "absolute import" % pkgname, RuntimeWarning, 1)
-                return None
-            else:
-                raise SystemError, ("Parent module '%s' not loaded, cannot "
-                                    "perform relative import" % pkgname)
+            if level >= 1:
+                raise (
+                    SystemError,
+                    f"Parent module '{pkgname}' not loaded, cannot perform relative import",
+                )
+            warn(
+                f"Parent module '{pkgname}' not found while handling absolute import",
+                RuntimeWarning,
+                1,
+            )
+            return None
 
     def find_head_package(self, parent, name):
         if '.' in name:
@@ -465,18 +464,15 @@ class ModuleImporter(BasicModuleImporter):
         else:
             head = name
             tail = ""
-        if parent:
-            qname = "%s.%s" % (parent.__name__, head)
-        else:
-            qname = head
-        q = self.import_it(head, qname, parent)
-        if q: return q, tail
+        qname = f"{parent.__name__}.{head}" if parent else head
+        if q := self.import_it(head, qname, parent):
+            return q, tail
         if parent:
             qname = head
             parent = None
-            q = self.import_it(head, qname, parent)
-            if q: return q, tail
-        raise ImportError, "No module named '%s'" % qname
+            if q := self.import_it(head, qname, parent):
+                return q, tail
+        raise (ImportError, f"No module named '{qname}'")
 
     def load_tail(self, q, tail):
         m = q
@@ -484,10 +480,10 @@ class ModuleImporter(BasicModuleImporter):
             i = tail.find('.')
             if i < 0: i = len(tail)
             head, tail = tail[:i], tail[i+1:]
-            mname = "%s.%s" % (m.__name__, head)
+            mname = f"{m.__name__}.{head}"
             m = self.import_it(head, mname, m)
             if not m:
-                raise ImportError, "No module named '%s'" % mname
+                raise (ImportError, f"No module named '{mname}'")
         return m
 
     def ensure_fromlist(self, m, fromlist, recursive=0):
@@ -501,11 +497,11 @@ class ModuleImporter(BasicModuleImporter):
                     else:
                         self.ensure_fromlist(m, all, 1)
                 continue
-            if sub != "*" and not hasattr(m, sub):
-                subname = "%s.%s" % (m.__name__, sub)
+            if not hasattr(m, sub):
+                subname = f"{m.__name__}.{sub}"
                 submod = self.import_it(sub, subname, m)
                 if not submod:
-                    raise ImportError, "No module named '%s'" % subname
+                    raise (ImportError, f"No module named '{subname}'")
 
     def import_it(self, partname, fqname, parent, force_load=0):
         if not partname:

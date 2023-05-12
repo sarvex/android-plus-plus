@@ -319,7 +319,7 @@ class HTTPMessage(mimetools.Message):
                 elif tell:
                     self.fp.seek(startofline)
                 else:
-                    self.status = self.status + '; bad seek'
+                    self.status += '; bad seek'
                 break
 
 class HTTPResponse:
@@ -333,17 +333,7 @@ class HTTPResponse:
     # See RFC 2616 sec 19.6 and RFC 1945 sec 6 for details.
 
     def __init__(self, sock, debuglevel=0, strict=0, method=None, buffering=False):
-        if buffering:
-            # The caller won't be using any sock.recv() calls, so buffering
-            # is fine and recommended for performance.
-            self.fp = sock.makefile('rb')
-        else:
-            # The buffer size is specified as zero, because the headers of
-            # the response are read with readline().  If the reads were
-            # buffered the readline() calls could consume some of the
-            # response, which make be read via a recv() on the underlying
-            # socket.
-            self.fp = sock.makefile('rb', 0)
+        self.fp = sock.makefile('rb') if buffering else sock.makefile('rb', 0)
         self.debuglevel = debuglevel
         self.strict = strict
         self._method = method
@@ -491,10 +481,7 @@ class HTTPResponse:
             # An HTTP/1.1 proxy is assumed to stay open unless
             # explicitly closed.
             conn = self.msg.getheader('connection')
-            if conn and "close" in conn.lower():
-                return True
-            return False
-
+            return bool(conn and "close" in conn.lower())
         # Some HTTP/1.0 implementations have support for persistent
         # connections, using rules different than HTTP/1.1.
 
@@ -509,11 +496,7 @@ class HTTPResponse:
 
         # Proxy-Connection is a netscape hack.
         pconn = self.msg.getheader('proxy-connection')
-        if pconn and "keep-alive" in pconn.lower():
-            return False
-
-        # otherwise, assume it will close
-        return True
+        return not pconn or "keep-alive" not in pconn.lower()
 
     def close(self):
         if self.fp:
@@ -556,10 +539,9 @@ class HTTPResponse:
             self.close()        # we read everything
             return s
 
-        if self.length is not None:
-            if amt > self.length:
-                # clip the read to the "end of response"
-                amt = self.length
+        if self.length is not None and amt > self.length:
+            # clip the read to the "end of response"
+            amt = self.length
 
         # we do not use _safe_read() here because this may be a .will_close
         # connection, and the user is reading more bytes than will be provided
@@ -729,7 +711,7 @@ class HTTPConnection:
                     if host[i+1:] == "":  # http://foo.com:/ == http://foo.com/
                         port = self.default_port
                     else:
-                        raise InvalidURL("nonnumeric port: '%s'" % host[i+1:])
+                        raise InvalidURL(f"nonnumeric port: '{host[i + 1:]}'")
                 host = host[:i]
             else:
                 port = self.default_port
@@ -874,7 +856,7 @@ class HTTPConnection:
         self._method = method
         if not url:
             url = '/'
-        hdr = '%s %s %s' % (method, url, self._http_vsn_str)
+        hdr = f'{method} {url} {self._http_vsn_str}'
 
         self._output(hdr)
 
@@ -913,11 +895,11 @@ class HTTPConnection:
                         host_enc = self.host.encode("idna")
                     # Wrap the IPv6 Host Header with [] (RFC 2732)
                     if host_enc.find(':') >= 0:
-                        host_enc = "[" + host_enc + "]"
+                        host_enc = f"[{host_enc}]"
                     if self.port == self.default_port:
                         self.putheader('Host', host_enc)
                     else:
-                        self.putheader('Host', "%s:%s" % (host_enc, self.port))
+                        self.putheader('Host', f"{host_enc}:{self.port}")
 
             # note: we are assuming that clients will not attempt to set these
             #       headers since *this* library must deal with the
@@ -930,17 +912,13 @@ class HTTPConnection:
             if not skip_accept_encoding:
                 self.putheader('Accept-Encoding', 'identity')
 
-            # we can accept "chunked" Transfer-Encodings, but no others
-            # NOTE: no TE header implies *only* "chunked"
-            #self.putheader('TE', 'chunked')
+                # we can accept "chunked" Transfer-Encodings, but no others
+                # NOTE: no TE header implies *only* "chunked"
+                #self.putheader('TE', 'chunked')
 
-            # if TE is supplied in the header, then it must appear in a
-            # Connection header.
-            #self.putheader('Connection', 'TE')
-
-        else:
-            # For HTTP/1.0, the server will assume "not chunked"
-            pass
+                # if TE is supplied in the header, then it must appear in a
+                # Connection header.
+                #self.putheader('Connection', 'TE')
 
     def putheader(self, header, *values):
         """Send a request header line to the server.
@@ -1238,10 +1216,7 @@ class IncompleteRead(HTTPException):
         self.partial = partial
         self.expected = expected
     def __repr__(self):
-        if self.expected is not None:
-            e = ', %i more expected' % self.expected
-        else:
-            e = ''
+        e = ', %i more expected' % self.expected if self.expected is not None else ''
         return 'IncompleteRead(%i bytes read%s)' % (len(self.partial), e)
     def __str__(self):
         return repr(self)
@@ -1307,10 +1282,11 @@ class LineAndFileWrapper:
         if amt is None or amt > self._line_left:
             s = self._line[self._line_offset:]
             self._done()
-            if amt is None:
-                return s + self._file.read()
-            else:
-                return s + self._file.read(amt - len(s))
+            return (
+                s + self._file.read()
+                if amt is None
+                else s + self._file.read(amt - len(s))
+            )
         else:
             assert amt <= self._line_left
             i = self._line_offset

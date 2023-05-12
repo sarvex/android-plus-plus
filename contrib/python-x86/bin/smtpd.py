@@ -197,7 +197,7 @@ class SMTPChannel(asynchat.async_chat):
             self.push('503 Duplicate HELO/EHLO')
         else:
             self.__greeting = arg
-            self.push('250 %s' % self.__fqdn)
+            self.push(f'250 {self.__fqdn}')
 
     def smtp_NOOP(self, arg):
         if arg:

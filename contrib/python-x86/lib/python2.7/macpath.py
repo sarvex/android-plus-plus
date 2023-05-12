@@ -48,9 +48,9 @@ def join(s, *p):
         if t[:1] == ':':
             t = t[1:]
         if ':' not in path:
-            path = ':' + path
+            path = f':{path}'
         if path[-1:] != ':':
-            path = path + ':'
+            path = f'{path}:'
         path = path + t
     return path
 
@@ -65,8 +65,8 @@ def split(s):
     for i in range(len(s)):
         if s[i] == ':': colon = i + 1
     path, file = s[:colon-1], s[colon:]
-    if path and not ':' in path:
-        path = path + ':'
+    if path and ':' not in path:
+        path = f'{path}:'
     return path, file
 
 
@@ -133,20 +133,19 @@ def normpath(s):
     equivalent paths."""
 
     if ":" not in s:
-        return ":"+s
+        return f":{s}"
 
     comps = s.split(":")
     i = 1
     while i < len(comps)-1:
         if comps[i] == "" and comps[i-1] != "":
-            if i > 1:
-                del comps[i-1:i+1]
-                i = i - 1
-            else:
+            if i <= 1:
                 # best way to handle this is to raise an exception
                 raise norm_error, 'Cannot use :: immediately after volume name'
+            del comps[i-1:i+1]
+            i -= 1
         else:
-            i = i + 1
+            i += 1
 
     s = ":".join(comps)
 
@@ -186,10 +185,7 @@ def walk(top, func, arg):
 def abspath(path):
     """Return an absolute path."""
     if not isabs(path):
-        if isinstance(path, unicode):
-            cwd = os.getcwdu()
-        else:
-            cwd = os.getcwd()
+        cwd = os.getcwdu() if isinstance(path, unicode) else os.getcwd()
         path = join(cwd, path)
     return normpath(path)
 
@@ -203,7 +199,7 @@ def realpath(path):
     if not path:
         return path
     components = path.split(':')
-    path = components[0] + ':'
+    path = f'{components[0]}:'
     for c in components[1:]:
         path = join(path, c)
         try:

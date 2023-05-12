@@ -25,10 +25,7 @@ def getcaps():
         morecaps = readmailcapfile(fp)
         fp.close()
         for key, value in morecaps.iteritems():
-            if not key in caps:
-                caps[key] = value
-            else:
-                caps[key] = caps[key] + value
+            caps[key] = value if key not in caps else caps[key] + value
     return caps
 
 def listmailcapfiles():
@@ -36,16 +33,15 @@ def listmailcapfiles():
     # XXX Actually, this is Unix-specific
     if 'MAILCAPS' in os.environ:
         str = os.environ['MAILCAPS']
-        mailcaps = str.split(':')
+        return str.split(':')
     else:
-        if 'HOME' in os.environ:
-            home = os.environ['HOME']
-        else:
-            # Don't bother with getpwuid()
-            home = '.' # Last resort
-        mailcaps = [home + '/.mailcap', '/etc/mailcap',
-                '/usr/etc/mailcap', '/usr/local/etc/mailcap']
-    return mailcaps
+        home = os.environ.get('HOME', '.')
+        return [
+            f'{home}/.mailcap',
+            '/etc/mailcap',
+            '/usr/etc/mailcap',
+            '/usr/local/etc/mailcap',
+        ]
 
 
 # Part 2: the parser.
@@ -112,10 +108,7 @@ def parseline(line):
         else:
             fkey = field[:i].strip()
             fvalue = field[i+1:].strip()
-        if fkey in fields:
-            # Ignore it
-            pass
-        else:
+        if fkey not in fields:
             fields[fkey] = fvalue
     return key, fields
 
@@ -158,9 +151,9 @@ def findmatch(caps, MIMEtype, key='view', filename="/dev/null", plist=[]):
 def lookup(caps, MIMEtype, key=None):
     entries = []
     if MIMEtype in caps:
-        entries = entries + caps[MIMEtype]
+        entries += caps[MIMEtype]
     MIMEtypes = MIMEtype.split('/')
-    MIMEtype = MIMEtypes[0] + '/*'
+    MIMEtype = f'{MIMEtypes[0]}/*'
     if MIMEtype in caps:
         entries = entries + caps[MIMEtype]
     if key is not None:
@@ -172,13 +165,16 @@ def subst(field, MIMEtype, filename, plist=[]):
     res = ''
     i, n = 0, len(field)
     while i < n:
-        c = field[i]; i = i+1
+        c = field[i]
+        i += 1
         if c != '%':
             if c == '\\':
-                c = field[i:i+1]; i = i+1
+                c = field[i:i+1]
+                i += 1
             res = res + c
         else:
-            c = field[i]; i = i+1
+            c = field[i]
+            i += 1
             if c == '%':
                 res = res + c
             elif c == 's':
@@ -188,24 +184,18 @@ def subst(field, MIMEtype, filename, plist=[]):
             elif c == '{':
                 start = i
                 while i < n and field[i] != '}':
-                    i = i+1
+                    i += 1
                 name = field[start:i]
-                i = i+1
+                i += 1
                 res = res + findparam(name, plist)
-            # XXX To do:
-            # %n == number of parts if type is multipart/*
-            # %F == list of alternating type and filename for parts
             else:
-                res = res + '%' + c
+                res = f'{res}%{c}'
     return res
 
 def findparam(name, plist):
-    name = name.lower() + '='
+    name = f'{name.lower()}='
     n = len(name)
-    for p in plist:
-        if p[:n].lower() == name:
-            return p[n:]
-    return ''
+    return next((p[n:] for p in plist if p[:n].lower() == name), '')
 
 
 # Part 4: test program.

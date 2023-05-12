@@ -164,12 +164,14 @@ def b32encode(s):
     encoded = EMPTYSTRING.join(parts)
     # Adjust for any leftover partial quanta
     if leftover == 1:
-        return encoded[:-6] + '======'
+        return f'{encoded[:-6]}======'
     elif leftover == 2:
-        return encoded[:-4] + '===='
+        return f'{encoded[:-4]}===='
     elif leftover == 3:
-        return encoded[:-3] + '==='
+        return f'{encoded[:-3]}==='
     elif leftover == 4:
+        return f'{encoded[:-1]}='
+    return encoded
         return encoded[:-1] + '='
     return encoded
 
@@ -207,9 +209,8 @@ def b32decode(s, casefold=False, map01=None):
     # characters because this will tell us how many null bytes to remove from
     # the end of the decoded string.
     padchars = 0
-    mo = re.search('(?P<pad>[=]*)$', s)
-    if mo:
-        padchars = len(mo.group('pad'))
+    if mo := re.search('(?P<pad>[=]*)$', s):
+        padchars = len(mo['pad'])
         if padchars > 0:
             s = s[:-padchars]
     # Now decode the full quanta
@@ -240,6 +241,8 @@ def b32decode(s, casefold=False, map01=None):
         last = last[:-4]
     else:
         raise TypeError('Incorrect padding')
+    parts.append(last)
+    return EMPTYSTRING.join(parts)
     parts.append(last)
     return EMPTYSTRING.join(parts)
 
@@ -279,9 +282,6 @@ def b16decode(s, casefold=False):
 # binascii has any line length limitations.  It just doesn't seem worth it
 # though.
 
-MAXLINESIZE = 76 # Excluding the CRLF
-MAXBINSIZE = (MAXLINESIZE//4)*3
-
 def encode(input, output):
     """Encode a file."""
     while True:
@@ -289,8 +289,12 @@ def encode(input, output):
         if not s:
             break
         while len(s) < MAXBINSIZE:
-            ns = input.read(MAXBINSIZE-len(s))
-            if not ns:
+            if ns := input.read(MAXBINSIZE - len(s)):
+                s += ns
+            else:
+                break
+        line = binascii.b2a_base64(s)
+        output.write(line)
                 break
             s += ns
         line = binascii.b2a_base64(s)

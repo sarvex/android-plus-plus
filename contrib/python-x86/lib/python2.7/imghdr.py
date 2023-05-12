@@ -20,8 +20,7 @@ def what(file, h=None):
         f = None
     try:
         for tf in tests:
-            res = tf(h, f)
-            if res:
+            if res := tf(h, f):
                 return res
     finally:
         if f: f.close()
